@@ -1,4 +1,7 @@
+import { defaultHomeHero } from '../lib/homeHero'
+
 export const weddingData = {
+  homeHero: { ...defaultHomeHero },
   couple: 'Sarah & Hayato',
   date: '2027-07-24T15:00:00-03:00',
   dateLabel: '24.07.2027',

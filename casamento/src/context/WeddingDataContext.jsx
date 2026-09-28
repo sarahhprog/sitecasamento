@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { weddingData as defaultWeddingData } from '../data/weddingData'
+import { defaultHomeHero } from '../lib/homeHero'
 import { isSupabaseConfigured, requireSupabase } from '../lib/supabase'
 import { WeddingDataContext } from './weddingData'
 const editableKeys = new Set(['couple', 'date', 'dateLabel', 'timeLabel', 'venue', 'city'])
@@ -7,6 +8,7 @@ const editableKeys = new Set(['couple', 'date', 'dateLabel', 'timeLabel', 'venue
 export function WeddingDataProvider({ children }) {
   const [data, setData] = useState(defaultWeddingData)
   const [error, setError] = useState('')
+  const updateHomeHero = (homeHero) => setData((previous) => ({ ...previous, homeHero }))
 
   useEffect(() => {
     if (!isSupabaseConfigured) return undefined
@@ -29,7 +31,11 @@ export function WeddingDataProvider({ children }) {
           .filter((row) => editableKeys.has(row.key))
           .map((row) => [row.key, row.value]),
       )
-      setData({ ...defaultWeddingData, ...updates })
+      const heroSettings = rows?.find((row) => row.key === 'home_hero')?.value
+      const homeHero = heroSettings && typeof heroSettings === 'object' && !Array.isArray(heroSettings)
+        ? { ...defaultHomeHero, ...heroSettings }
+        : defaultHomeHero
+      setData({ ...defaultWeddingData, ...updates, homeHero })
     }
 
     loadSettings().catch((loadError) => {
@@ -39,5 +45,5 @@ export function WeddingDataProvider({ children }) {
     return () => { active = false }
   }, [])
 
-  return <WeddingDataContext.Provider value={{ data, error }}>{children}</WeddingDataContext.Provider>
+  return <WeddingDataContext.Provider value={{ data, error, updateHomeHero }}>{children}</WeddingDataContext.Provider>
 }

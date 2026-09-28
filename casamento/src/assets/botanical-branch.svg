@@ -1,29 +1,33 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 620" fill="none">
-  <g stroke="#676B52" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M25 602C86 525 130 452 163 374c35-83 57-158 84-221C270 92 303 43 379 9" stroke-width="2.1"/>
-    <path d="M93 515C67 493 46 464 37 429c34-3 61 14 73 47" fill="#676B52" fill-opacity=".22" stroke-width="1.6"/>
-    <path d="M111 476c-2-36 12-67 43-91 11 36-3 70-43 91Z" fill="#676B52" fill-opacity=".22" stroke-width="1.6"/>
-    <path d="M140 420c-38-14-63-42-70-81 39 3 66 29 70 81Z" fill="#676B52" fill-opacity=".22" stroke-width="1.6"/>
-    <path d="M158 378c-1-39 17-70 52-92 7 39-11 70-52 92Z" fill="#676B52" fill-opacity=".22" stroke-width="1.6"/>
-    <path d="M184 320c-39-15-59-43-62-82 37 5 60 33 62 82Z" fill="#676B52" fill-opacity=".22" stroke-width="1.6"/>
-    <path d="M202 279c2-39 22-68 59-85 3 39-17 68-59 85Z" fill="#676B52" fill-opacity=".22" stroke-width="1.6"/>
-    <path d="M222 229c-34-20-50-50-48-88 36 11 53 39 48 88Z" fill="#676B52" fill-opacity=".22" stroke-width="1.6"/>
-    <path d="M245 181c8-37 32-62 70-72-5 38-29 63-70 72Z" fill="#676B52" fill-opacity=".22" stroke-width="1.6"/>
-    <path d="M266 135c-28-25-38-57-29-94 33 19 45 49 29 94Z" fill="#676B52" fill-opacity=".22" stroke-width="1.6"/>
-    <path d="M290 99c17-31 46-48 85-48-14 36-42 53-85 48Z" fill="#676B52" fill-opacity=".22" stroke-width="1.6"/>
-    <path d="M73 542c20-28 47-43 82-43-14 33-41 48-82 43Z" fill="#676B52" fill-opacity=".22" stroke-width="1.45"/>
-    <path d="M164 360c-20-13-35-31-44-56m61-8c20-13 39-29 56-49m8-66c17-11 34-23 49-39" stroke-width="1" opacity=".72"/>
-    <path d="M37 429c22 10 44 25 73 47m30-56c4-24 13-49 29-74m15-26c-17-19-31-40-44-65m62 24c10-25 22-49 36-72m13-26c-13-21-24-44-29-69m82 60c9-20 22-39 42-58" stroke-width=".8" opacity=".6"/>
-    <path d="M304 104c-17 18-32 37-47 58m-35 67c-13 16-25 32-38 49m-42 82c-10 17-20 34-31 50m-40 82c-12 17-24 33-38 50" stroke-width=".7" opacity=".48"/>
+  <defs>
+    <g id="leaf">
+      <path d="M0 0C-34-3-55-24-55-59-20-55 1-34 0 0Z" fill="#5C6B2D" fill-opacity=".3" stroke="#455223" stroke-width="2"/>
+      <path d="M0 0  -50-53m19 20-17-2m27 11-17-2M-38-40l2-8m13 17 3-10m-25-8-8-5m31 25 9-5" stroke="#E8E1D4" stroke-opacity=".72" stroke-width="1.15" stroke-linecap="round"/>
+      <path d="M-51-55c7 1 12 4 16 9m-9-15c8 3 14 7 18 13" stroke="#455223" stroke-opacity=".55" stroke-width=".75"/>
+    </g>
+  </defs>
+  <g stroke="#455223" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 604C74 547 114 487 146 416c31-68 49-133 83-203C265 142 313 71 400 17" stroke-width="4"/>
+    <path d="M45 574c26-29 46-60 65-94m37-76c14-30 25-62 38-94m47-96c17-28 37-54 61-78m47-48c20-20 40-37 62-53" stroke-width="1.7" opacity=".82"/>
   </g>
-  <g stroke="#632F38" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M55 380c-17-13-22-29-14-44 13-4 25 3 32 19 7-15 19-23 33-19 8 16 3 32-14 45-14 10-26 10-37-1Z" fill="#632F38" fill-opacity=".26" stroke-width="1.5"/>
-    <path d="M75 352c2 13 3 25 3 38m-25-36 21 23m24-22-24 24" stroke-width=".8" opacity=".9"/>
-    <path d="M317 248c-15-11-18-25-11-38 11-3 21 3 27 16 7-13 16-19 28-15 7 13 3 27-11 38-12 9-23 9-33-1Z" fill="#87535A" fill-opacity=".3" stroke-width="1.4"/>
-    <path d="M334 224c1 11 2 21 2 32m-21-29 18 19m21-18-19 19" stroke-width=".75" opacity=".9"/>
-    <path d="M226 107c-11-8-14-19-9-29 9-3 17 2 22 12 5-10 13-15 22-12 6 10 3 21-8 29-10 7-18 7-27 0Z" fill="#632F38" fill-opacity=".24" stroke-width="1.2"/>
-    <circle cx="77" cy="389" r="3.2" fill="#B29A6A" stroke="none"/>
-    <circle cx="336" cy="256" r="2.8" fill="#B29A6A" stroke="none"/>
-    <circle cx="239" cy="111" r="2.4" fill="#B29A6A" stroke="none"/>
+  <g>
+    <use href="#leaf" transform="translate(53 572) rotate(-128) scale(.9)"/>
+    <use href="#leaf" transform="translate(67 551) rotate(-36) scale(.82)"/>
+    <use href="#leaf" transform="translate(88 519) rotate(-132) scale(.92)"/>
+    <use href="#leaf" transform="translate(103 493) rotate(-38) scale(.84)"/>
+    <use href="#leaf" transform="translate(121 460) rotate(-133) scale(.9)"/>
+    <use href="#leaf" transform="translate(137 430) rotate(-37) scale(.86)"/>
+    <use href="#leaf" transform="translate(155 391) rotate(-135) scale(.87)"/>
+    <use href="#leaf" transform="translate(171 358) rotate(-40) scale(.82)"/>
+    <use href="#leaf" transform="translate(188 322) rotate(-136) scale(.88)"/>
+    <use href="#leaf" transform="translate(205 287) rotate(-41) scale(.8)"/>
+    <use href="#leaf" transform="translate(223 250) rotate(-137) scale(.85)"/>
+    <use href="#leaf" transform="translate(239 217) rotate(-43) scale(.79)"/>
+    <use href="#leaf" transform="translate(258 180) rotate(-139) scale(.82)"/>
+    <use href="#leaf" transform="translate(277 149) rotate(-45) scale(.75)"/>
+    <use href="#leaf" transform="translate(300 116) rotate(-141) scale(.78)"/>
+    <use href="#leaf" transform="translate(321 88) rotate(-47) scale(.72)"/>
+    <use href="#leaf" transform="translate(347 61) rotate(-143) scale(.72)"/>
+    <use href="#leaf" transform="translate(370 39) rotate(-49) scale(.66)"/>
   </g>
 </svg>

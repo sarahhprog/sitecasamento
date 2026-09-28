@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { requireSupabase } from '../lib/supabase'
+import HomeHeroSettings from './HomeHeroSettings'
 
 function getStorageObjectPath(url) {
   const marker = '/storage/v1/object/public/wedding-assets/'
@@ -132,8 +133,10 @@ function AdminDataPage() {
   }, [config])
 
   useEffect(() => {
+    if (resource === 'configuracoes') return undefined
     loadItems()
-  }, [loadItems])
+    return undefined
+  }, [loadItems, resource])
 
   const fields = useMemo(() => config?.fields || [], [config])
 
@@ -273,6 +276,7 @@ function AdminDataPage() {
   }
 
   if (!config) return <p className="admin-alert">Esta seção administrativa não foi encontrada.</p>
+  if (resource === 'configuracoes') return <HomeHeroSettings />
 
   return <section className="admin-resource">
     <div className="admin-resource-heading">
