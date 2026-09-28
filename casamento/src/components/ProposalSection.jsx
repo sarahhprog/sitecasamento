@@ -20,12 +20,8 @@ function ProposalSection({ proposal }) {
         </aside>
       </div>
       <div className="proposal-gallery">
-        <figure className="proposal-photo proposal-photo-main">
-          <img src={proposal.images.main} alt="Momento do pedido de casamento em Amsterdam" />
-        </figure>
-        <figure className="proposal-photo proposal-photo-secondary">
-          <img src={proposal.images.secondary} alt="Detalhe da viagem do casal por Amsterdam" />
-        </figure>
+        <figure className="proposal-photo proposal-photo-main" aria-hidden="true" />
+        <figure className="proposal-photo proposal-photo-secondary" aria-hidden="true" />
         <span className="proposal-botanical" aria-hidden="true">✦</span>
       </div>
     </div>

@@ -17,8 +17,8 @@ export const weddingData = {
       'Foi em Amsterdam, entre canais, bicicletas, luzes e jardins, que começamos a imaginar o nosso próximo grande capítulo: o casamento.',
     ],
     images: {
-      main: 'https://images.unsplash.com/photo-1523438885200-e635ba2c371e?auto=format&fit=crop&w=1200&q=85',
-      secondary: 'https://images.unsplash.com/photo-1507504031003-b417219a0fde?auto=format&fit=crop&w=900&q=85',
+      main: null,
+      secondary: null,
     },
   },
   story: [
@@ -34,13 +34,8 @@ export const weddingData = {
     'E mal podemos esperar para viver esse dia com vocês.',
   ],
   images: {
-    story: 'https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&w=1200&q=85',
-    proposal: 'https://images.unsplash.com/photo-1523438885200-e635ba2c371e?auto=format&fit=crop&w=1000&q=85',
-    gallery: [
-      'https://images.unsplash.com/photo-1507504031003-b417219a0fde?auto=format&fit=crop&w=1200&q=85',
-      'https://images.unsplash.com/photo-1511285560929-80b456fea0bc?auto=format&fit=crop&w=900&q=85',
-      'https://images.unsplash.com/photo-1523438885200-e635ba2c371e?auto=format&fit=crop&w=900&q=85',
-      'https://images.unsplash.com/photo-1507504031003-b417219a0fde?auto=format&fit=crop&w=900&q=85',
-    ],
+    story: null,
+    proposal: null,
+    gallery: [null, null, null, null],
   },
 }

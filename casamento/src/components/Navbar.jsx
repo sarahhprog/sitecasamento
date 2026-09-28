@@ -5,7 +5,7 @@ const links = [
   ['Página inicial', '/'],
   ['Confirmar presença', '/presenca'],
   ['Lista de presentes', '/presentes'],
-  ['Informações', '/informacoes'],
+  ['Localização e Informações', '/informacoes'],
 ]
 
 function Navbar({ light = false }) {

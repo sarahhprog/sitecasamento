@@ -1,22 +1,64 @@
 import { useState } from 'react'
 import PageLayout from './PageLayout'
+import { isSupabaseConfigured, requireSupabase } from '../lib/supabase'
 
 function Presenca() {
   const [identification, setIdentification] = useState('')
   const [guestName, setGuestName] = useState('')
   const [response, setResponse] = useState('')
+  const [invitation, setInvitation] = useState(null)
+  const [peopleCount, setPeopleCount] = useState(1)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
 
-  function handleIdentification(event) {
+  async function handleIdentification(event) {
     event.preventDefault()
     const name = identification.trim()
 
-    if (name) {
+    if (!name) return
+    setError('')
+    if (!isSupabaseConfigured) {
       setGuestName(name)
+      return
+    }
+
+    setBusy(true)
+    try {
+      const { data, error: lookupError } = await requireSupabase().rpc('lookup_invitation', { invitation_text: name })
+      if (lookupError) throw lookupError
+      const match = data?.[0]
+      if (!match) throw new Error('Não encontramos um convite com esse nome ou código.')
+      setInvitation(match)
+      setPeopleCount(Math.max(1, Math.min(match.confirmed_people || 1, match.party_size)))
+      setGuestName(match.name)
+    } catch (lookupError) {
+      setError(lookupError.message)
+    } finally {
+      setBusy(false)
     }
   }
 
-  function handleResponse(choice) {
-    setResponse(choice)
+  async function handleResponse(choice) {
+    setError('')
+    if (!invitation) {
+      setResponse(choice)
+      return
+    }
+
+    setBusy(true)
+    try {
+      const { error: rsvpError } = await requireSupabase().rpc('submit_invitation_rsvp', {
+        invitation_id: invitation.id,
+        will_attend: choice === 'confirmed',
+        people_count: choice === 'confirmed' ? Number(peopleCount) : 0,
+      })
+      if (rsvpError) throw rsvpError
+      setResponse(choice)
+    } catch (rsvpError) {
+      setError(rsvpError.message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return <PageLayout eyebrow="Para o grande dia" title="Confirme sua presença">
@@ -37,16 +79,23 @@ function Presenca() {
           autoComplete="name"
           required
         />
-        <button className="button" type="submit">Continuar</button>
+        {error && <p className="admin-alert" role="alert">{error}</p>}
+        <button className="button" type="submit" disabled={busy}>{busy ? 'Aguarde…' : 'Continuar'}</button>
       </form>}
 
       {guestName && !response && <section className="rsvp-step" aria-live="polite">
         <span className="rsvp-step-label">02 · Sua resposta</span>
         <h2>Olá, {guestName}!</h2>
         <p>Você poderá confirmar sua presença para o nosso grande dia.</p>
+        {invitation?.party_size > 1 && <label className="rsvp-label">Quantidade de pessoas
+          <select className="rsvp-input" value={peopleCount} onChange={(event) => setPeopleCount(event.target.value)}>
+            {Array.from({ length: invitation.party_size }, (_, index) => index + 1).map((count) => <option key={count} value={count}>{count}</option>)}
+          </select>
+        </label>}
+        {error && <p className="admin-alert" role="alert">{error}</p>}
         <div className="rsvp-actions">
-          <button className="button" type="button" onClick={() => handleResponse('confirmed')}>Confirmar presença</button>
-          <button className="button button-muted" type="button" onClick={() => handleResponse('declined')}>Não poderei comparecer</button>
+          <button className="button" type="button" disabled={busy} onClick={() => handleResponse('confirmed')}>Confirmar presença</button>
+          <button className="button button-muted" type="button" disabled={busy} onClick={() => handleResponse('declined')}>Não poderei comparecer</button>
         </div>
       </section>}
 

@@ -5,10 +5,11 @@ import StorySection from '../components/StorySection'
 import ProposalSection from '../components/ProposalSection'
 import Gallery from '../components/Gallery'
 import Footer from '../components/Footer'
-import { weddingData } from '../data/weddingData'
+import { useWeddingData } from '../context/weddingData'
 
 function Home() {
-  return <div className="site-shell"><Navbar /><main><Hero /><QuickLinks /><StorySection id="historia" eyebrow="Nossa história" title="Dois caminhos, uma só história." text={weddingData.story} image={weddingData.images.story} watercolor /><ProposalSection proposal={weddingData.proposal} /><Gallery images={weddingData.images.gallery} /></main><Footer /></div>
+  const { data } = useWeddingData()
+  return <div className="site-shell"><Navbar /><main><Hero /><QuickLinks /><StorySection id="historia" eyebrow="Nossa história" title="Dois caminhos, uma só história." text={data.story} watercolor /><ProposalSection proposal={data.proposal} /><Gallery images={data.images.gallery} /></main><Footer /></div>
 }
 
 export default Home
