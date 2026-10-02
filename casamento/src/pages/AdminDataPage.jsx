@@ -36,7 +36,7 @@ const resources = {
       { name: 'category', label: 'Categoria' },
       { name: 'available', label: 'Disponível', type: 'checkbox' },
       { name: 'public_visible', label: 'Exibir no site público', type: 'checkbox' },
-      { name: 'upload', label: 'Foto ou PDF', type: 'file', accept: '.jpg,.jpeg,.png,.webp,.pdf' },
+      { name: 'upload', label: 'Foto do presente (JPG, PNG ou WEBP)', type: 'file', accept: '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp' },
       { name: 'remove_file', label: 'Remover arquivo atual', type: 'checkbox' },
       { name: 'payment_link', label: 'Link de pagamento futuro', type: 'url' },
       { name: 'payment_identifier', label: 'Identificador de pagamento futuro' },

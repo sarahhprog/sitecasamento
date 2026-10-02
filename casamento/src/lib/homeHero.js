@@ -1,3 +1,5 @@
+import damaskPattern from '../assets/damask-pattern.svg'
+
 export const defaultHomeHero = {
   backgroundType: 'color',
   backgroundColor: '#5C6B2D',
@@ -22,10 +24,18 @@ export function getHomeHeroBackgroundStyle(homeHero = defaultHomeHero, imagePrev
   const useImage = homeHero.backgroundType === 'image' && imageUrl
 
   if (!useImage) {
+    const backgroundColor = homeHero.backgroundColor || defaultHomeHero.backgroundColor
+    const useDamask = backgroundColor.toUpperCase() === defaultHomeHero.backgroundColor
+    const textColorBackground = useDamask ? '#C6C6B1' : backgroundColor
+
     return {
-      backgroundColor: homeHero.backgroundColor || defaultHomeHero.backgroundColor,
+      backgroundColor: useDamask ? '#C6C6B1' : backgroundColor,
       backgroundImage: 'none',
-      '--hero-text-color': getTextColor(homeHero.backgroundColor || defaultHomeHero.backgroundColor),
+      '--hero-damask-image': useDamask ? `url(${damaskPattern})` : 'none',
+      '--hero-structure-backplate': useDamask ? '#C6C6B1' : 'transparent',
+      '--hero-inner-frame-line': useDamask ? 'rgba(244,240,231,.28)' : 'transparent',
+      '--hero-text-color': getTextColor(textColorBackground),
+      '--hero-text-shadow': useDamask ? '0 0 4px rgba(198, 198, 177, .88)' : 'none',
     }
   }
 

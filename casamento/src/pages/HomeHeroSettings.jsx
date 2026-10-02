@@ -221,6 +221,7 @@ function HomeHeroSettings() {
       <div className="home-hero-preview-block">
         <h2>Prévia da primeira seção</h2>
         <div className="hero-info home-hero-preview" style={getHomeHeroBackgroundStyle(previewSettings, selectedFile ? filePreview : '')}>
+          <div className="hero-damask" aria-hidden="true" />
           <div className="hero-foliage" aria-hidden="true" />
           <div className="container hero-content">
             <span className="eyebrow">Uma nova história começa aqui</span>

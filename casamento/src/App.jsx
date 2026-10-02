@@ -16,11 +16,12 @@ import PerguntasFrequentes from './pages/PerguntasFrequentes'
 import { AdminAuthProvider } from './context/AdminAuthContext'
 import { WeddingDataProvider } from './context/WeddingDataContext'
 import { useWeddingData } from './context/weddingData'
+import damaskMotif from './assets/damask-motif.svg'
 
 function PageTransition({ children }) {
   const location = useLocation()
 
-  return <div className="page-transition" key={location.pathname}>{children}</div>
+  return <div className="page-transition" key={location.pathname} style={{ '--damask-motif-image': `url(${damaskMotif})` }}>{children}</div>
 }
 
 function WeddingSettingsStatus() {
