@@ -653,33 +653,7 @@ p {
   margin: 0;
 }
 
-.proposal-copy > p strong,
-.proposal-fact strong { color: var(--wine); font-weight: 500; }
-
-.proposal-fact {
-  max-width: 540px;
-  margin-top: 32px;
-  padding: 20px 22px;
-  color: var(--cream);
-  border: 1px solid rgba(244,240,231,.42);
-  background: var(--forest);
-}
-
-.proposal-fact-label {
-  display: block;
-  margin-bottom: 7px;
-  color: var(--cream);
-  font: 500 1.28rem var(--serif);
-}
-
-.proposal-fact p {
-  margin: 0;
-  color: var(--cream);
-  font-size: .94rem;
-  line-height: 1.78;
-}
-
-.proposal-fact strong { color: var(--cream); }
+.proposal-copy > p strong { color: var(--wine); font-weight: 500; }
 
 .proposal-gallery {
   position: relative;
@@ -1082,20 +1056,6 @@ p {
   box-shadow: 0 0 0 1px var(--paper);
   content: '';
   pointer-events: none;
-}
-
-.gift-category {
-  position: absolute;
-  right: 18px;
-  bottom: 17px;
-  z-index: 1;
-  padding: 5px 8px;
-  color: var(--wine);
-  border: 1px solid rgba(135,83,90,.3);
-  background: var(--cream);
-  font-size: .64rem;
-  letter-spacing: .12em;
-  text-transform: uppercase;
 }
 
 .gift-card-content {
@@ -1919,7 +1879,6 @@ p {
   .gifts-section { margin-top: 36px; }
   .gifts-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px 8px; }
   .gift-image-wrap { flex-basis: 128px; height: 128px; }
-  .gift-category { right: 6px; bottom: 7px; padding: 4px 5px; font-size: .56rem; letter-spacing: .06em; }
   .gift-image-wrap::before { width: 54px; height: 82px; }
   .gift-card-content { padding: 12px 4px 14px; }
   .gift-card-content h2 { font-size: 1.05rem; line-height: 1.15; }

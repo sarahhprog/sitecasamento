@@ -15,7 +15,6 @@ function GiftCard({ gift }) {
   return <article className={`gift-card ${unavailable ? 'gift-card-unavailable' : ''}`}>
     <div className="gift-image-wrap" aria-hidden="true">
       {gift.image_url && <img className="gift-image" src={gift.image_url} alt="" />}
-      {gift.category && <span className="gift-category">{gift.category}</span>}
     </div>
     <div className="gift-card-content">
       <h2>{gift.name}</h2>

@@ -14,10 +14,6 @@ function ProposalSection({ proposal }) {
         <h2>O pedido</h2>
         <div className="proposal-date">{proposal.date}</div>
         {proposal.story.map((paragraph) => <p key={paragraph}>{renderParagraph(paragraph)}</p>)}
-        <aside className="proposal-fact">
-          <span className="proposal-fact-label">Você sabia?</span>
-          <p>O <strong>Hortus Botanicus Amsterdam</strong> foi fundado em <strong>1638</strong> como um jardim medicinal. Hoje, é um dos jardins botânicos mais antigos do mundo e reúne uma grande diversidade de plantas em seus jardins e estufas.</p>
-        </aside>
       </div>
       <div className="proposal-gallery">
         <figure className="proposal-photo proposal-photo-main" aria-hidden="true" />
