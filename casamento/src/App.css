@@ -1125,6 +1125,101 @@ p {
   line-height: 1.8;
 }
 
+.gift-checkout-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(41,40,36,.55);
+}
+
+.gift-checkout-dialog {
+  width: min(540px, 100%);
+  max-height: min(90vh, 720px);
+  overflow-y: auto;
+  padding: 30px;
+  color: var(--ink);
+  border: 1px solid var(--gold);
+  background: var(--cream);
+  box-shadow: 0 20px 60px rgba(41,40,36,.22);
+}
+
+.gift-checkout-dialog h2 {
+  margin: 10px 0 0;
+  color: var(--forest);
+  font: 500 2rem var(--serif);
+}
+
+.gift-checkout-value {
+  margin: 5px 0 22px;
+  color: var(--wine);
+  font: 500 1.15rem var(--serif);
+}
+
+.gift-checkout-field {
+  display: grid;
+  gap: 7px;
+  margin-top: 18px;
+  color: var(--forest);
+  font-size: .84rem;
+}
+
+.gift-checkout-field input,
+.gift-checkout-field textarea {
+  width: 100%;
+  padding: 11px 12px;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 0;
+  outline: 0;
+  background: #fff;
+  font: inherit;
+  font-size: .96rem;
+}
+
+.gift-checkout-field textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
+.gift-checkout-field input:focus,
+.gift-checkout-field textarea:focus {
+  border-color: var(--forest);
+  box-shadow: 0 0 0 2px rgba(103,107,82,.16);
+}
+
+.gift-message-count {
+  justify-self: end;
+  color: var(--muted);
+  font-size: .76rem;
+}
+
+.gift-checkout-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.payment-result {
+  display: grid;
+  justify-items: start;
+  gap: 20px;
+  max-width: 680px;
+  padding: 24px 0;
+}
+
+.payment-result > p:not(.admin-alert) {
+  margin: 0;
+  color: var(--forest);
+  font: 500 1.4rem var(--serif);
+  line-height: 1.5;
+}
+
 .location-section { margin-top: 54px; }
 
 .location-card {
@@ -1887,6 +1982,11 @@ p {
   .gift-card-footer strong { font-size: .84rem; }
   .gift-button { width: 100%; padding: 8px 4px; font-size: .58rem; letter-spacing: .04em; }
   .gift-contact { margin-top: 54px; }
+  .gift-checkout-backdrop { align-items: flex-end; padding: 12px; }
+  .gift-checkout-dialog { max-height: 92vh; padding: 23px 18px; }
+  .gift-checkout-dialog h2 { font-size: 1.7rem; }
+  .gift-checkout-actions { flex-direction: column-reverse; }
+  .gift-checkout-actions .button { width: 100%; }
   .location-section { margin-top: 36px; }
   .location-card { align-items: flex-start; flex-direction: column; gap: 22px; padding: 24px 18px; }
   .location-card h2 { font-size: 2rem; }

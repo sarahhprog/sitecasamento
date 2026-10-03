@@ -8,6 +8,8 @@ const statistics = [
   { label: 'Pendentes', table: 'guests', filter: ['rsvp_status', 'pending'], to: '/admin/convidados' },
   { label: 'Não comparecerão', table: 'guests', filter: ['rsvp_status', 'declined'], to: '/admin/convidados' },
   { label: 'Presentes', table: 'gifts', to: '/admin/presentes' },
+  { label: 'Pagamentos registrados', table: 'gift_payments', to: '/admin/pagamentos' },
+  { label: 'Contribuições confirmadas', table: 'gift_payments', filter: ['payment_status', 'approved'], to: '/admin/pagamentos' },
   { label: 'Mensagens', table: 'messages', to: '/admin/mensagens' },
   { label: 'Fotos', table: 'photos', to: '/admin/fotos' },
 ]

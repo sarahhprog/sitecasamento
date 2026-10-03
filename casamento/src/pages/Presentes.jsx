@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import PageLayout from './PageLayout'
 import { gifts } from '../data/gifts'
 import { isSupabaseConfigured, requireSupabase } from '../lib/supabase'
@@ -12,36 +12,8 @@ function formatValue(value) {
   }).format(value)
 }
 
-function GiftCard({ gift }) {
+function GiftCard({ gift, onSelect, paymentsEnabled }) {
   const unavailable = gift.available === false || gift.status === 'unavailable'
-
-  async function handlePresentear() {
-    try {
-      const response = await fetch('/api/mercado-pago/criar-preferencia', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: gift.name,
-          quantity: 1,
-          unit_price: Number(gift.value),
-        }),
-      })
-
-      const data = await response.json()
-
-      if (data.init_point) {
-        window.location.href = data.init_point
-        return
-      }
-
-      alert(data.error || 'Não foi possível criar o pagamento.')
-    } catch (error) {
-      console.error(error)
-      alert('Não foi possível conectar ao Mercado Pago.')
-    }
-  }
 
   return (
     <article className={`gift-card ${unavailable ? 'gift-card-unavailable' : ''}`}>
@@ -61,9 +33,9 @@ function GiftCard({ gift }) {
           <button
             className="button gift-button"
             type="button"
-            disabled={unavailable}
+            disabled={unavailable || !paymentsEnabled}
             aria-label={`Presentear com ${gift.name}`}
-            onClick={handlePresentear}
+            onClick={() => onSelect(gift)}
           >
             {unavailable ? 'Indisponível' : 'Presentear'}
           </button>
@@ -94,6 +66,13 @@ function Presentes() {
   const [loading, setLoading] = useState(isSupabaseConfigured)
   const [error, setError] = useState('')
   const [page, setPage] = useState(1)
+  const [selectedGift, setSelectedGift] = useState(null)
+  const [guestName, setGuestName] = useState('')
+  const [message, setMessage] = useState('')
+  const [checkoutAttemptId, setCheckoutAttemptId] = useState('')
+  const [checkoutError, setCheckoutError] = useState('')
+  const [checkoutBusy, setCheckoutBusy] = useState(false)
+  const guestNameInput = useRef(null)
 
   const pageCount = Math.ceil(
     (isSupabaseConfigured ? giftCount : gifts.length) / PAGE_SIZE
@@ -168,6 +147,81 @@ function Presentes() {
     setPage(nextPage)
   }
 
+  function openCheckout(gift) {
+    setSelectedGift(gift)
+    setGuestName('')
+    setMessage('')
+    setCheckoutError('')
+    setCheckoutAttemptId(crypto.randomUUID())
+  }
+
+  function closeCheckout() {
+    if (checkoutBusy) return
+    setSelectedGift(null)
+    setCheckoutError('')
+  }
+
+  useEffect(() => {
+    if (!selectedGift) return undefined
+    guestNameInput.current?.focus()
+
+    function handleEscape(event) {
+      if (event.key === 'Escape' && !checkoutBusy) {
+        setSelectedGift(null)
+        setCheckoutError('')
+      }
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [selectedGift, checkoutBusy])
+
+  async function handleCheckoutSubmit(event) {
+    event.preventDefault()
+    if (!selectedGift || checkoutBusy) return
+
+    const trimmedName = guestName.trim()
+    const trimmedMessage = message.trim()
+    if (!trimmedName) {
+      setCheckoutError('Informe seu nome para continuar.')
+      guestNameInput.current?.focus()
+      return
+    }
+    if (trimmedName.length > 120) {
+      setCheckoutError('O nome deve ter no máximo 120 caracteres.')
+      return
+    }
+    if (trimmedMessage.length > 300) {
+      setCheckoutError('A mensagem deve ter no máximo 300 caracteres.')
+      return
+    }
+
+    setCheckoutBusy(true)
+    setCheckoutError('')
+    try {
+      const response = await fetch('/api/mercado-pago/criar-preferencia', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          giftId: selectedGift.id,
+          idempotencyKey: checkoutAttemptId,
+          guestName: trimmedName,
+          message: trimmedMessage,
+        }),
+      })
+      const data = await response.json()
+
+      if (!response.ok || !data.init_point) {
+        throw new Error(data.error || 'Não foi possível iniciar o pagamento.')
+      }
+      window.location.assign(data.init_point)
+    } catch (checkoutFailure) {
+      setCheckoutError(checkoutFailure.message || 'Não foi possível conectar ao servidor.')
+    } finally {
+      setCheckoutBusy(false)
+    }
+  }
+
   return (
     <PageLayout eyebrow="Com carinho" title="Lista de presentes">
       <p className="page-intro">
@@ -189,7 +243,12 @@ function Presentes() {
           <>
             <div className="gifts-grid">
               {visibleGifts.map((gift) => (
-                <GiftCard key={gift.id} gift={gift} />
+                <GiftCard
+                  key={gift.id}
+                  gift={gift}
+                  onSelect={openCheckout}
+                  paymentsEnabled={isSupabaseConfigured}
+                />
               ))}
             </div>
 
@@ -261,6 +320,73 @@ function Presentes() {
           Falar pelo WhatsApp
         </a>
       </aside>
+
+      {selectedGift && (
+        <div
+          className="gift-checkout-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeCheckout()
+          }}
+        >
+          <section
+            className="gift-checkout-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="gift-checkout-title"
+          >
+            <span className="eyebrow">Um presente especial</span>
+            <h2 id="gift-checkout-title">{selectedGift.name}</h2>
+            <p className="gift-checkout-value">{formatValue(selectedGift.value)}</p>
+
+            <form onSubmit={handleCheckoutSubmit}>
+              <label className="gift-checkout-field">
+                Seu nome
+                <input
+                  ref={guestNameInput}
+                  type="text"
+                  name="guestName"
+                  autoComplete="name"
+                  maxLength={120}
+                  required
+                  value={guestName}
+                  onChange={(event) => setGuestName(event.target.value)}
+                />
+              </label>
+
+              <label className="gift-checkout-field">
+                Mensagem para os noivos (opcional)
+                <textarea
+                  name="message"
+                  maxLength={300}
+                  rows={4}
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  aria-describedby="gift-message-count"
+                />
+                <span className="gift-message-count" id="gift-message-count">
+                  {message.length}/300
+                </span>
+              </label>
+
+              {checkoutError && <p className="admin-alert" role="alert">{checkoutError}</p>}
+
+              <div className="gift-checkout-actions">
+                <button
+                  className="button button-muted"
+                  type="button"
+                  onClick={closeCheckout}
+                  disabled={checkoutBusy}
+                >
+                  Voltar
+                </button>
+                <button className="button" type="submit" disabled={checkoutBusy}>
+                  {checkoutBusy ? 'Preparando pagamento…' : 'Seguir para pagamento'}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </PageLayout>
   )
 }

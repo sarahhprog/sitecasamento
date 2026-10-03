@@ -6,6 +6,7 @@ const navigation = [
   ['Dashboard', '/admin'],
   ['Convidados', '/admin/convidados'],
   ['Presentes', '/admin/presentes'],
+  ['Pagamentos', '/admin/pagamentos'],
   ['Mensagens', '/admin/mensagens'],
   ['Fotos / Galeria', '/admin/fotos'],
   ['Localização e Informações', '/admin/informacoes'],

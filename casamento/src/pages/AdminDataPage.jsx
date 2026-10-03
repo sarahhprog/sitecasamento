@@ -49,6 +49,41 @@ const resources = {
     readOnly: true,
     columns: ['name', 'message', 'created_at'],
   },
+  pagamentos: {
+    title: 'Pagamentos de presentes',
+    table: 'gift_payments',
+    readOnly: true,
+    preventCreate: true,
+    preventDelete: true,
+    hideActions: true,
+    columns: ['guest_name', 'message', 'gift_name', 'amount', 'created_at', 'payment_status'],
+    labels: {
+      guest_name: 'Nome do convidado',
+      message: 'Mensagem',
+      gift_name: 'Presente',
+      amount: 'Valor',
+      created_at: 'Data e horário da contribuição',
+      payment_status: 'Status do pagamento',
+    },
+    formatters: {
+      amount: (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value),
+      payment_status: (value) => ({
+        pending: 'Pendente',
+        in_process: 'Pendente',
+        approved: 'Aprovado',
+        rejected: 'Recusado',
+        cancelled: 'Cancelado',
+        refunded: 'Reembolsado',
+        charged_back: 'Contestado',
+        in_mediation: 'Em mediação',
+        unknown: 'Pendente de confirmação',
+      })[value] || value,
+      created_at: (value, item) => {
+        const contributionDate = item?.paid_at || value
+        return contributionDate ? new Date(contributionDate).toLocaleString('pt-BR') : '—'
+      },
+    },
+  },
   fotos: {
     title: 'Fotos / Galeria',
     table: 'photos',
@@ -307,10 +342,10 @@ function AdminDataPage() {
     {loading ? <p>Carregando…</p> : items.length === 0
       ? <p className="admin-empty">Nenhum registro cadastrado.</p>
       : <div className="admin-table-wrap"><table className="admin-table">
-        <thead><tr>{config.columns.map((column) => <th key={column}>{column.replaceAll('_', ' ')}</th>)}<th>Ações</th></tr></thead>
+        <thead><tr>{config.columns.map((column) => <th key={column}>{config.labels?.[column] || column.replaceAll('_', ' ')}</th>)}{!config.hideActions && <th>Ações</th>}</tr></thead>
         <tbody>{items.map((item) => <tr key={item.id || item.key}>
-          {config.columns.map((column) => <td key={column}>{displayValue(item[column])}</td>)}
-          <td className="admin-row-actions">{!config.readOnly && <button type="button" onClick={() => startEdit(item)}>Editar</button>}{!config.preventDelete && <button type="button" onClick={() => deleteItem(item)}>Excluir</button>}</td>
+          {config.columns.map((column) => <td key={column}>{config.formatters?.[column] && item[column] ? config.formatters[column](item[column], item) : displayValue(item[column])}</td>)}
+          {!config.hideActions && <td className="admin-row-actions">{!config.readOnly && <button type="button" onClick={() => startEdit(item)}>Editar</button>}{!config.preventDelete && <button type="button" onClick={() => deleteItem(item)}>Excluir</button>}</td>}
         </tr>)}</tbody>
       </table></div>}
   </section>

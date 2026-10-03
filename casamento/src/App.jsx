@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
 import Home from './pages/Home'
 import Presenca from './pages/Presenca'
 import Presentes from './pages/Presentes'
+import PagamentoResultado from './pages/PagamentoResultado'
 import Informacoes from './pages/Informacoes'
 import Admin from './pages/Admin'
 import TrajesPadrinhos from './pages/TrajesPadrinhos'
@@ -40,6 +41,7 @@ function App() {
               <Route path="/" element={<Home />} />
               <Route path="/presenca" element={<Presenca />} />
               <Route path="/presentes" element={<Presentes />} />
+              <Route path="/pagamento/resultado" element={<PagamentoResultado />} />
               <Route path="/informacoes" element={<Informacoes />} />
               <Route path="/mensagens" element={<Mensagens />} />
               <Route path="/perguntas-frequentes" element={<PerguntasFrequentes />} />
