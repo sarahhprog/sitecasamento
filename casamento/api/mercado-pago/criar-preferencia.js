@@ -5,20 +5,7 @@ import {
   parseGiftPaymentInput,
 } from '../_lib/giftPaymentUtils.js'
 import { getSupabaseAdmin } from '../_lib/supabaseAdmin.js'
-
-function getSiteUrl() {
-  const configuredUrl = process.env.SITE_URL
-    || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '')
-  if (!configuredUrl) return null
-
-  try {
-    const url = new URL(configuredUrl)
-    if (!['http:', 'https:'].includes(url.protocol)) return null
-    return url.origin
-  } catch {
-    return null
-  }
-}
+import { getSiteUrl } from '../_lib/siteUrl.js'
 
 function sendExistingCheckout(res, payment) {
   if (!payment.checkout_url || !payment.preference_id) {
@@ -47,12 +34,21 @@ export default async function handler(req, res) {
 
   const accessToken = process.env.MERCADOPAGO_ACCESS_TOKEN
   const siteUrl = getSiteUrl()
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  if (!supabaseUrl || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return res.status(503).json({
+      error: 'O registro seguro de pagamentos não está configurado no servidor.',
+      code: 'SUPABASE_SERVER_CONFIGURATION',
+    })
+  }
   if (!accessToken || !siteUrl) {
     return res.status(503).json({
-      error: 'O pagamento ainda não está configurado no servidor.',
+      error: 'O checkout não está configurado no servidor.',
+      code: 'MERCADOPAGO_SERVER_CONFIGURATION',
     })
   }
 
+  let failureStage = 'supabase_catalog'
   try {
     const supabase = getSupabaseAdmin()
     const { data: gift, error: giftError } = await supabase
@@ -68,6 +64,7 @@ export default async function handler(req, res) {
 
     const amount = Math.round(Number(gift.value) * 100) / 100
     const installments = installmentsForAmount(amount)
+    failureStage = 'supabase_ledger'
     let { data: payment, error: lookupError } = await supabase
       .from('gift_payments')
       .select('*')
@@ -128,6 +125,7 @@ export default async function handler(req, res) {
       }
     }
 
+    failureStage = 'mercadopago_preference'
     const preference = new Preference(new MercadoPagoConfig({ accessToken }))
     const result = await preference.create({
       body: {
@@ -160,6 +158,7 @@ export default async function handler(req, res) {
       throw new Error('O Mercado Pago não retornou um checkout válido.')
     }
 
+    failureStage = 'supabase_ledger'
     const { data: updatedPayment, error: updateError } = await supabase
       .from('gift_payments')
       .update({
@@ -178,7 +177,20 @@ export default async function handler(req, res) {
       purchase_id: updatedPayment.idempotency_key,
     })
   } catch (error) {
-    console.error('Erro ao criar preferência de presente:', error)
-    return res.status(500).json({ error: 'Não foi possível iniciar o pagamento.' })
+    const isSupabaseFailure = failureStage.startsWith('supabase_')
+    console.error('Falha ao iniciar pagamento de presente:', {
+      stage: failureStage,
+      name: error?.name,
+      code: error?.code,
+      status: error?.status,
+    })
+    return res.status(isSupabaseFailure ? 503 : 502).json({
+      error: isSupabaseFailure
+        ? 'O registro seguro do pagamento não está disponível.'
+        : 'Não foi possível criar o checkout no Mercado Pago.',
+      code: isSupabaseFailure
+        ? 'SUPABASE_SCHEMA_OR_PERMISSION'
+        : 'MERCADOPAGO_PREFERENCE_FAILED',
+    })
   }
 }

@@ -209,10 +209,23 @@ function Presentes() {
           message: trimmedMessage,
         }),
       })
+      const contentType = response.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) {
+        if (response.status === 404) {
+          throw new Error('A API de pagamentos não está disponível neste servidor. Em desenvolvimento, execute as funções Vercel com `npx vercel dev`.')
+        }
+        throw new Error('O servidor de pagamentos retornou uma resposta inválida.')
+      }
       const data = await response.json()
 
       if (!response.ok || !data.init_point) {
-        throw new Error(data.error || 'Não foi possível iniciar o pagamento.')
+        const configMessages = {
+          SUPABASE_SERVER_CONFIGURATION: 'Configure a conexão privada do Supabase no ambiente server-side da Vercel.',
+          SUPABASE_SCHEMA_OR_PERMISSION: 'A tabela de pagamentos não está disponível. Aplique a migration do fluxo de presentes no Supabase.',
+          MERCADOPAGO_SERVER_CONFIGURATION: 'Configure o token do Mercado Pago e a URL pública no ambiente server-side da Vercel.',
+          MERCADOPAGO_PREFERENCE_FAILED: 'O Mercado Pago não conseguiu criar o checkout. Verifique os logs da função na Vercel.',
+        }
+        throw new Error(configMessages[data.code] || data.error || 'Não foi possível iniciar o pagamento.')
       }
       window.location.assign(data.init_point)
     } catch (checkoutFailure) {

@@ -34,7 +34,7 @@ Gift and gallery files allow JPG, JPEG, PNG, WEBP, and PDF up to 10 MB. Only adm
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `MERCADOPAGO_ACCESS_TOKEN`
    - `MERCADOPAGO_WEBHOOK_SECRET`
-   - `SITE_URL` as the absolute site origin, for example `https://example.com` (`VERCEL_URL` is used as a fallback)
+   - `SITE_URL` as the absolute site origin, for example `https://example.com` (when omitted, Production prefers `VERCEL_PROJECT_PRODUCTION_URL`; other environments fall back to `VERCEL_URL`)
 3. Keep `SUPABASE_SERVICE_ROLE_KEY`, `MERCADOPAGO_ACCESS_TOKEN`, and `MERCADOPAGO_WEBHOOK_SECRET` server-only. Never prefix them with `VITE_`, add them to frontend code, or expose them in logs. If a credential has ever been exposed, revoke and rotate it before enabling payments.
 4. In Mercado Pago developer settings, configure a webhook for payment events pointing to `https://YOUR_SITE/api/mercado-pago/webhook`. Copy that webhook's signing secret into `MERCADOPAGO_WEBHOOK_SECRET`. The endpoint verifies `x-signature`, then retrieves the payment using the authenticated SDK before updating the ledger.
 5. `npm run dev` starts Vite only and does not serve the `/api` functions. For local full-flow testing, run `npx vercel dev` from the `casamento` project directory with the required server variables configured locally. Do not use production credentials for local or preview testing.
