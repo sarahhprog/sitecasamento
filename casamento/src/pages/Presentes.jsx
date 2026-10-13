@@ -101,12 +101,22 @@ function Presentes() {
 
       if (!active) return
 
-      if (queryError) {
-        setError(queryError.message)
-      } else {
-        setRemoteGifts(data || [])
-        setGiftCount(count || 0)
-      }
+     
+if (queryError) {
+  console.error('Erro ao carregar presentes:', queryError)
+  setError('Não foi possível carregar os presentes cadastrados. Exibindo a lista alternativa.')
+  setRemoteGifts(
+    gifts.map((gift) => ({
+      ...gift,
+      available: gift.status === 'available',
+      image_url: gift.image,
+    }))
+  )
+  setGiftCount(gifts.length)
+} else {
+  setRemoteGifts(data || [])
+  setGiftCount(count || 0)
+}
 
       setLoading(false)
     }
