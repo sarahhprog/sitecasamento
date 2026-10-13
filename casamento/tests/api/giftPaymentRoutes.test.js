@@ -40,12 +40,18 @@ function createQuery(result, onUpdate = () => {}) {
   return query
 }
 
-function createClient(queries) {
+function createClient(queries = [], rpcResults = []) {
   return {
     from(table) {
       const next = queries.shift()
       assert.ok(next, `Unexpected query for ${table}`)
       return next
+    },
+    rpc(name, parameters) {
+      assert.ok(rpcResults.length, `Unexpected RPC call to ${name}`)
+      const next = rpcResults.shift()
+      if (typeof next === 'function') return next(name, parameters)
+      return Promise.resolve(next)
     },
   }
 }
@@ -161,27 +167,22 @@ test('does not query Supabase for a malformed public status reference', async ()
   assert.equal(response.statusCode, 400)
 })
 
-test('creates a preference from the database price and persists its checkout reference', async () => {
+test('atomically reserves a gift and creates a preference using the server price', async () => {
   const restore = setServerEnvironment({
     SUPABASE_SERVICE_ROLE_KEY: 'test-service-key',
     VITE_SUPABASE_URL: 'https://project.supabase.co',
     MERCADOPAGO_ACCESS_TOKEN: 'test-access-token',
     SITE_URL: 'https://wedding.example',
   })
-  const gift = {
-    id: giftId,
-    name: 'Jantar especial',
-    value: '180.00',
-    available: true,
-    public_visible: true,
-  }
   const payment = {
     idempotency_key: purchaseId,
     gift_id: giftId,
-    gift_name: gift.name,
+    gift_name: 'Jantar especial',
     amount: 180,
     guest_name: 'Convidado de teste',
     message: null,
+    payment_status: 'pending',
+    reservation_expires_at: '2026-10-13T15:30:00.000Z',
     checkout_url: null,
     preference_id: null,
   }
@@ -192,10 +193,10 @@ test('creates a preference from the database price and persists its checkout ref
   }
   let preferenceInput
   const queries = [
-    createQuery({ data: gift, error: null }),
-    createQuery({ data: null, error: null }),
-    createQuery({ data: payment, error: null }),
     createQuery({ data: updatedPayment, error: null }),
+  ]
+  const rpcResults = [
+    Promise.resolve({ data: [payment], error: null }),
   ]
   const response = createResponse()
   try {
@@ -203,7 +204,7 @@ test('creates a preference from the database price and persists its checkout ref
       method: 'POST',
       body: validCheckoutBody({ amount: 0.01 }),
     }, response, {
-      getSupabaseAdmin: () => createClient(queries),
+      getSupabaseAdmin: () => createClient(queries, rpcResults),
       createPreference: async (input) => {
         preferenceInput = input
         return { id: 'preference-123', init_point: updatedPayment.checkout_url }
@@ -216,11 +217,14 @@ test('creates a preference from the database price and persists its checkout ref
   assert.equal(response.statusCode, 200)
   assert.equal(response.body.init_point, updatedPayment.checkout_url)
   assert.equal(preferenceInput.body.items[0].unit_price, 180)
+  assert.equal(preferenceInput.body.items[0].title, 'Jantar especial')
+  assert.equal(preferenceInput.body.expiration_date_to, payment.reservation_expires_at)
   assert.equal(preferenceInput.idempotencyKey, purchaseId)
   assert.equal(queries.length, 0)
+  assert.equal(rpcResults.length, 0)
 })
 
-test('identifies a gift-catalog permission failure without claiming the payment migration is missing', async () => {
+test('identifies a reservation permission failure without claiming the payment table is missing', async () => {
   const restore = setServerEnvironment({
     SUPABASE_SERVICE_ROLE_KEY: 'test-service-key',
     VITE_SUPABASE_URL: 'https://project.supabase.co',
@@ -233,8 +237,8 @@ test('identifies a gift-catalog permission failure without claiming the payment 
   console.error = (...args) => logged.push(args)
   try {
     await createPreference({ method: 'POST', body: validCheckoutBody() }, response, {
-      getSupabaseAdmin: () => createClient([
-        createQuery({ data: null, error: { code: '42501', message: 'private test detail' } }),
+      getSupabaseAdmin: () => createClient([], [
+        Promise.resolve({ data: null, error: { code: '42501', message: 'private test detail' } }),
       ]),
     })
   } finally {
@@ -243,15 +247,15 @@ test('identifies a gift-catalog permission failure without claiming the payment 
   }
 
   assert.equal(response.statusCode, 503)
-  assert.equal(response.body.code, 'SUPABASE_GIFT_CATALOG_FAILURE')
+  assert.equal(response.body.code, 'SUPABASE_GIFT_RESERVATION_FAILURE')
   assert.doesNotMatch(response.body.error, /migration/i)
-  assert.equal(logged[0][1].stage, 'supabase_catalog')
-  assert.equal(logged[0][1].operation, 'read_gift_catalog')
+  assert.equal(logged[0][1].stage, 'supabase_gift_reservation')
+  assert.equal(logged[0][1].operation, 'reserve_gift_and_create_payment')
   assert.equal(logged[0][1].code, '42501')
   assert.equal(JSON.stringify(logged).includes('private test detail'), false)
 })
 
-test('reports a missing payment-ledger relation as a schema failure', async () => {
+test('reports a missing reservation function as a schema failure', async () => {
   const restore = setServerEnvironment({
     SUPABASE_SERVICE_ROLE_KEY: 'test-service-key',
     VITE_SUPABASE_URL: 'https://project.supabase.co',
@@ -263,12 +267,8 @@ test('reports a missing payment-ledger relation as a schema failure', async () =
   console.error = () => {}
   try {
     await createPreference({ method: 'POST', body: validCheckoutBody() }, response, {
-      getSupabaseAdmin: () => createClient([
-        createQuery({
-          data: { id: giftId, name: 'Presente', value: 180, available: true, public_visible: true },
-          error: null,
-        }),
-        createQuery({ data: null, error: { code: 'PGRST205' } }),
+      getSupabaseAdmin: () => createClient([], [
+        Promise.resolve({ data: null, error: { code: 'PGRST202' } }),
       ]),
     })
   } finally {
@@ -278,6 +278,33 @@ test('reports a missing payment-ledger relation as a schema failure', async () =
 
   assert.equal(response.statusCode, 503)
   assert.equal(response.body.code, 'SUPABASE_SCHEMA_FAILURE')
+})
+
+test('rejects an already reserved gift without creating a Mercado Pago preference', async () => {
+  const restore = setServerEnvironment({
+    SUPABASE_SERVICE_ROLE_KEY: 'test-service-key',
+    VITE_SUPABASE_URL: 'https://project.supabase.co',
+    MERCADOPAGO_ACCESS_TOKEN: 'test-access-token',
+    SITE_URL: 'https://wedding.example',
+  })
+  const response = createResponse()
+  let preferenceCreated = false
+  try {
+    await createPreference({ method: 'POST', body: validCheckoutBody() }, response, {
+      getSupabaseAdmin: () => createClient([], [
+        Promise.resolve({ data: [], error: null }),
+      ]),
+      createPreference: async () => {
+        preferenceCreated = true
+      },
+    })
+  } finally {
+    restore()
+  }
+
+  assert.equal(response.statusCode, 409)
+  assert.equal(response.body.code, 'GIFT_UNAVAILABLE')
+  assert.equal(preferenceCreated, false)
 })
 
 test('concurrent requests with the same idempotency key reuse the first checkout', async () => {
@@ -291,15 +318,8 @@ test('concurrent requests with the same idempotency key reuse the first checkout
   let preferenceCreated = false
   try {
     await createPreference({ method: 'POST', body: validCheckoutBody() }, response, {
-      getSupabaseAdmin: () => createClient([
-        createQuery({
-          data: { id: giftId, name: 'Jantar especial', value: 180, available: true, public_visible: true },
-          error: null,
-        }),
-        createQuery({ data: null, error: null }),
-        createQuery({ data: null, error: { code: '23505' } }),
-        createQuery({
-          data: {
+      getSupabaseAdmin: () => createClient([], [
+        Promise.resolve({ data: [{
             idempotency_key: purchaseId,
             gift_id: giftId,
             gift_name: 'Jantar especial',
@@ -308,9 +328,7 @@ test('concurrent requests with the same idempotency key reuse the first checkout
             message: null,
             preference_id: 'preference-123',
             checkout_url: 'https://www.mercadopago.com/checkout/123',
-          },
-          error: null,
-        }),
+          }], error: null }),
       ]),
       createPreference: async () => {
         preferenceCreated = true
@@ -336,13 +354,8 @@ test('reuses an existing checkout for duplicate idempotency keys', async () => {
   let preferenceCreated = false
   try {
     await createPreference({ method: 'POST', body: validCheckoutBody() }, response, {
-      getSupabaseAdmin: () => createClient([
-        createQuery({
-          data: { id: giftId, name: 'Jantar especial', value: 180, available: true, public_visible: true },
-          error: null,
-        }),
-        createQuery({
-          data: {
+      getSupabaseAdmin: () => createClient([], [
+        Promise.resolve({ data: [{
             idempotency_key: purchaseId,
             gift_id: giftId,
             gift_name: 'Jantar especial',
@@ -351,9 +364,7 @@ test('reuses an existing checkout for duplicate idempotency keys', async () => {
             message: null,
             preference_id: 'preference-123',
             checkout_url: 'https://www.mercadopago.com/checkout/123',
-          },
-          error: null,
-        }),
+          }], error: null }),
       ]),
       createPreference: async () => {
         preferenceCreated = true
@@ -379,13 +390,8 @@ test('does not create or reopen a checkout after its payment is approved', async
   let preferenceCreated = false
   try {
     await createPreference({ method: 'POST', body: validCheckoutBody() }, response, {
-      getSupabaseAdmin: () => createClient([
-        createQuery({
-          data: { id: giftId, name: 'Jantar especial', value: 180, available: true, public_visible: true },
-          error: null,
-        }),
-        createQuery({
-          data: {
+      getSupabaseAdmin: () => createClient([], [
+        Promise.resolve({ data: [{
             idempotency_key: purchaseId,
             gift_id: giftId,
             gift_name: 'Jantar especial',
@@ -395,9 +401,7 @@ test('does not create or reopen a checkout after its payment is approved', async
             payment_status: 'approved',
             preference_id: 'preference-123',
             checkout_url: 'https://www.mercadopago.com/checkout/123',
-          },
-          error: null,
-        }),
+          }], error: null }),
       ]),
       createPreference: async () => {
         preferenceCreated = true
@@ -423,16 +427,15 @@ test('returns a safe checkout failure when Mercado Pago returns an invalid prefe
   console.error = () => {}
   try {
     await createPreference({ method: 'POST', body: validCheckoutBody() }, response, {
-      getSupabaseAdmin: () => createClient([
-        createQuery({
-          data: { id: giftId, name: 'Presente', value: 180, available: true, public_visible: true },
-          error: null,
-        }),
-        createQuery({ data: null, error: null }),
-        createQuery({
-          data: { idempotency_key: purchaseId, gift_id: giftId, gift_name: 'Presente', amount: 180 },
-          error: null,
-        }),
+      getSupabaseAdmin: () => createClient([], [
+        Promise.resolve({ data: [{
+          idempotency_key: purchaseId,
+          gift_id: giftId,
+          gift_name: 'Presente',
+          amount: 180,
+          payment_status: 'pending',
+          reservation_expires_at: '2026-10-13T15:30:00.000Z',
+        }], error: null }),
       ]),
       createPreference: async () => ({ id: null, init_point: null }),
     })
@@ -518,7 +521,7 @@ test('rejects invalid webhook signatures before contacting payment providers', a
   assert.equal(providerCalled, false)
 })
 
-for (const status of ['approved', 'pending', 'in_process', 'rejected', 'cancelled']) {
+for (const status of ['approved', 'pending', 'in_process', 'rejected', 'cancelled', 'expired']) {
   test(`valid webhook safely updates the stored ${status} status`, async () => {
     const input = signedWebhookRequest(status)
     const restore = setServerEnvironment({
@@ -528,30 +531,34 @@ for (const status of ['approved', 'pending', 'in_process', 'rejected', 'cancelle
       VITE_SUPABASE_URL: 'https://project.supabase.co',
     })
     const response = createResponse()
-    let update
-    let monotonicFilter
-    const queries = [
-      createQuery({ data: input.purchase, error: null }),
-      createQuery({ error: null }, (values) => {
-        if (values.filter) monotonicFilter = values.filter
-        else update = values
-      }),
-    ]
+    let rpcName
+    let rpcParameters
+    const queries = [createQuery({ data: input.purchase, error: null })]
     try {
       await webhook(input.request, response, {
         getPayment: async () => input.payment,
-        getSupabaseAdmin: () => createClient(queries),
+        getSupabaseAdmin: () => createClient(queries, [
+          (name, parameters) => {
+            rpcName = name
+            rpcParameters = parameters
+            return Promise.resolve({ data: true, error: null })
+          },
+        ]),
       })
     } finally {
       restore()
     }
 
     assert.equal(response.statusCode, 200)
-    assert.equal(update.payment_status, status)
-    assert.equal(update.mp_payment_id, input.payment.id)
-    assert.equal(monotonicFilter, 'mp_payment_updated_at.is.null,mp_payment_updated_at.lt.2026-10-13T15:00:00.000Z')
-    if (status === 'approved') assert.equal(update.paid_at, input.payment.date_approved)
-    else assert.equal(update.paid_at, undefined)
+    assert.equal(rpcName, 'apply_gift_payment_status')
+    assert.deepEqual(rpcParameters, {
+      p_idempotency_key: purchaseId,
+      p_payment_id: input.payment.id,
+      p_payment_updated_at: input.payment.date_last_updated,
+      p_payment_status: status,
+      p_amount: 180,
+      p_paid_at: input.payment.date_approved || null,
+    })
   })
 }
 
@@ -569,10 +576,13 @@ test('ignores webhook payments that do not match the stored amount', async () =>
   try {
     await webhook(input.request, response, {
       getPayment: async () => input.payment,
-      getSupabaseAdmin: () => createClient([
-        createQuery({ data: input.purchase, error: null }),
-        createQuery({ error: null }, () => { updateAttempted = true }),
-      ]),
+      getSupabaseAdmin: () => createClient(
+        [createQuery({ data: input.purchase, error: null })],
+        [() => {
+          updateAttempted = true
+          return Promise.resolve({ data: true, error: null })
+        }],
+      ),
     })
   } finally {
     console.error = log
@@ -596,7 +606,7 @@ test('new migration grants the payment server only the gift columns it reads', (
   assert.doesNotMatch(migration, /grant\s+all/i)
 })
 
-test('skips duplicate or older webhook timestamps', async () => {
+test('webhook sends timestamps to the database function that serializes payment and gift updates', async () => {
   const input = signedWebhookRequest()
   input.purchase.mp_payment_updated_at = input.payment.date_last_updated
   const restore = setServerEnvironment({
@@ -604,19 +614,40 @@ test('skips duplicate or older webhook timestamps', async () => {
     MERCADOPAGO_ACCESS_TOKEN: 'test-access-token',
   })
   const response = createResponse()
-  let updateAttempted = false
+  let rpcParameters
   try {
     await webhook(input.request, response, {
       getPayment: async () => input.payment,
-      getSupabaseAdmin: () => createClient([
-        createQuery({ data: input.purchase, error: null }),
-        createQuery({ error: null }, () => { updateAttempted = true }),
-      ]),
+      getSupabaseAdmin: () => createClient(
+        [createQuery({ data: input.purchase, error: null })],
+        [(name, parameters) => {
+          assert.equal(name, 'apply_gift_payment_status')
+          rpcParameters = parameters
+          return Promise.resolve({ data: false, error: null })
+        }],
+      ),
     })
   } finally {
     restore()
   }
 
   assert.equal(response.statusCode, 200)
-  assert.equal(updateAttempted, false)
+  assert.equal(rpcParameters.p_payment_updated_at, input.payment.date_last_updated)
+})
+
+test('reservation migration serializes checkout and keeps gift status separate from admin availability', () => {
+  const migration = readFileSync(
+    new URL('../../supabase/migrations/20261013150000_gift_reservations.sql', import.meta.url),
+    'utf8',
+  )
+
+  assert.match(migration, /from public\.gifts\s+where id = p_gift_id\s+for update/i)
+  assert.match(migration, /reservation_payment_key is distinct from p_idempotency_key/i)
+  assert.match(migration, /gifted_payment_key = p_idempotency_key/i)
+  assert.match(migration, /reservation_payment_key = p_idempotency_key/i)
+  assert.match(migration, /payment_row\.mp_payment_updated_at is not null[\s\S]*p_payment_updated_at <= payment_row\.mp_payment_updated_at/i)
+  assert.match(migration, /payment_row\.payment_status = 'approved'[\s\S]*p_payment_status in \('pending', 'in_process', 'rejected', 'cancelled'\)/i)
+  assert.match(migration, /payment_row\.payment_status in \('rejected', 'cancelled', 'expired'\)[\s\S]*p_payment_status in \('pending', 'in_process'\)/i)
+  assert.match(migration, /revoke all on function public\.reserve_gift_payment[\s\S]*from public, anon, authenticated/i)
+  assert.match(migration, /revoke all on function public\.apply_gift_payment_status[\s\S]*from public, anon, authenticated/i)
 })

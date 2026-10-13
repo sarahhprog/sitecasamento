@@ -67,17 +67,25 @@ const resources = {
     },
     formatters: {
       amount: (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value),
-      payment_status: (value) => ({
+      payment_status: (value, item) => {
+        if (value === 'pending'
+          && item?.reservation_expires_at
+          && new Date(item.reservation_expires_at).getTime() <= Date.now()) {
+          return 'Expirado'
+        }
+        return ({
         pending: 'Pendente',
         in_process: 'Pendente',
         approved: 'Aprovado',
         rejected: 'Recusado',
         cancelled: 'Cancelado',
+        expired: 'Expirado',
         refunded: 'Reembolsado',
         charged_back: 'Contestado',
         in_mediation: 'Em mediação',
         unknown: 'Pendente de confirmação',
-      })[value] || value,
+        })[value] || value
+      },
       created_at: (value, item) => {
         const contributionDate = item?.paid_at || value
         return contributionDate ? new Date(contributionDate).toLocaleString('pt-BR') : '—'

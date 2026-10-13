@@ -53,11 +53,11 @@ export default async function handler(req, res, dependencies = {}) {
     }
 
     failureStage = 'supabase_purchase_lookup'
-    failureOperation = 'read_payment_record_by_idempotency_key'
+    failureOperation = 'read_payment_snapshot'
     const supabase = (dependencies.getSupabaseAdmin || getSupabaseAdmin)()
     const { data: purchase, error: lookupError } = await supabase
       .from('gift_payments')
-      .select('id,idempotency_key,amount,currency_id,preference_id,mp_payment_updated_at,paid_at')
+      .select('id,gift_id,idempotency_key,amount,currency_id,preference_id,mp_payment_updated_at,paid_at')
       .eq('idempotency_key', idempotencyKey)
       .maybeSingle()
 
@@ -77,30 +77,17 @@ export default async function handler(req, res, dependencies = {}) {
     if (Number.isNaN(paymentUpdatedAt.getTime())) {
       throw new Error('O Mercado Pago retornou uma data de atualização inválida.')
     }
-    if (purchase.mp_payment_updated_at
-      && paymentUpdatedAt.getTime() <= new Date(purchase.mp_payment_updated_at).getTime()) {
-      return res.status(200).json({ received: true })
-    }
-
     const paymentStatus = normalizePaymentStatus(payment.status)
-    const update = {
-      mp_payment_id: String(payment.id),
-      mp_payment_updated_at: paymentUpdatedAt.toISOString(),
-      amount: Math.round(Number(payment.transaction_amount) * 100) / 100,
-      payment_status: paymentStatus,
-      updated_at: new Date().toISOString(),
-    }
-    if (paymentStatus === 'approved') {
-      update.paid_at = payment.date_approved || purchase.paid_at || new Date().toISOString()
-    }
-
-    failureStage = 'supabase_payment_update'
-    failureOperation = 'apply_monotonic_payment_status_update'
-    const { error: updateError } = await supabase
-      .from('gift_payments')
-      .update(update)
-      .eq('id', purchase.id)
-      .or(`mp_payment_updated_at.is.null,mp_payment_updated_at.lt.${paymentUpdatedAt.toISOString()}`)
+    failureStage = 'supabase_payment_and_gift_update'
+    failureOperation = 'apply_payment_status_and_gift_availability'
+    const { error: updateError } = await supabase.rpc('apply_gift_payment_status', {
+      p_idempotency_key: idempotencyKey,
+      p_payment_id: String(payment.id),
+      p_payment_updated_at: paymentUpdatedAt.toISOString(),
+      p_payment_status: paymentStatus,
+      p_amount: Math.round(Number(payment.transaction_amount) * 100) / 100,
+      p_paid_at: payment.date_approved || null,
+    })
 
     if (updateError) throw updateError
     return res.status(200).json({ received: true })

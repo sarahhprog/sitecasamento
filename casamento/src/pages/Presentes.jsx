@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import PageLayout from './PageLayout'
 import { isSupabaseConfigured, requireSupabase } from '../lib/supabase'
 
@@ -34,7 +35,7 @@ function GiftCard({ gift, onSelect, paymentsEnabled }) {
             type="button"
             disabled={unavailable || !paymentsEnabled}
             aria-label={`Presentear com ${gift.name}`}
-            onClick={() => onSelect(gift)}
+            onClick={(event) => onSelect(gift, event.currentTarget)}
           >
             {unavailable ? 'Indisponível' : 'Presentear'}
           </button>
@@ -73,7 +74,11 @@ function Presentes() {
   const [checkoutAttemptId, setCheckoutAttemptId] = useState('')
   const [checkoutError, setCheckoutError] = useState('')
   const [checkoutBusy, setCheckoutBusy] = useState(false)
+  const checkoutBusyRef = useRef(false)
   const guestNameInput = useRef(null)
+  const checkoutDialog = useRef(null)
+  const previousFocus = useRef(null)
+  const refreshGifts = useRef(null)
 
   const pageCount = Math.ceil(giftCount / PAGE_SIZE)
 
@@ -88,7 +93,7 @@ function Presentes() {
       const { data, count, error: queryError } = await requireSupabase()
         .from('gifts')
         .select(
-          'id,name,description,value,category,image_url,file_url,file_type,available,public_visible,created_at',
+          'id,name,description,value,category,image_url,file_url,file_type,available,public_visible,created_at,reservation_expires_at,reservation_in_process,gifted_at',
           { count: 'exact' }
         )
         .eq('public_visible', true)
@@ -100,22 +105,30 @@ function Presentes() {
 
       if (!active) return
 
-     
-if (queryError) {
-  console.error('Erro ao carregar presentes:', {
-    code: queryError.code || 'UNKNOWN',
-    status: queryError.status || null,
-  })
-  setError('Não foi possível carregar os presentes cadastrados. Tente novamente mais tarde.')
-  setRemoteGifts([])
-  setGiftCount(0)
-} else {
-  setRemoteGifts(data || [])
-  setGiftCount(count || 0)
-  setError('')
-}
+      if (queryError) {
+        console.error('Erro ao carregar presentes:', {
+          code: queryError.code || 'UNKNOWN',
+          status: queryError.status || null,
+        })
+        setError('Não foi possível carregar os presentes cadastrados. Tente novamente mais tarde.')
+        setRemoteGifts([])
+        setGiftCount(0)
+      } else {
+        const now = Date.now()
+        setRemoteGifts((data || []).map((gift) => {
+          const reservationActive = gift.reservation_expires_at
+            && new Date(gift.reservation_expires_at).getTime() > now
+          const reservationInProcess = gift.reservation_in_process
+          return {
+            ...gift,
+            available: gift.available && !gift.gifted_at && !reservationActive && !reservationInProcess,
+          }
+        }))
+        setGiftCount(count || 0)
+        setError('')
+      }
 
-setLoading(false)
+      setLoading(false)
     }
 
     loadGifts().catch((loadError) => {
@@ -131,8 +144,25 @@ setLoading(false)
       setLoading(false)
     })
 
+    refreshGifts.current = () => loadGifts().catch((loadError) => {
+      if (!active) return
+      console.error('Falha ao atualizar a lista de presentes:', {
+        name: loadError?.name || 'Error',
+        code: loadError?.code || loadError?.cause?.code || 'UNKNOWN',
+      })
+      setError('Não foi possível atualizar a lista de presentes.')
+    })
+    const refreshTimer = window.setInterval(refreshGifts.current, 15000)
+    const refreshOnFocus = () => refreshGifts.current?.()
+    window.addEventListener('focus', refreshOnFocus)
+    document.addEventListener('visibilitychange', refreshOnFocus)
+
     return () => {
       active = false
+      window.clearInterval(refreshTimer)
+      window.removeEventListener('focus', refreshOnFocus)
+      document.removeEventListener('visibilitychange', refreshOnFocus)
+      refreshGifts.current = null
     }
   }, [currentPage])
 
@@ -145,7 +175,9 @@ setLoading(false)
     setPage(nextPage)
   }
 
-  function openCheckout(gift) {
+  function openCheckout(gift, trigger) {
+    previousFocus.current = trigger
+    checkoutBusyRef.current = false
     setSelectedGift(gift)
     setGuestName('')
     setMessage('')
@@ -154,25 +186,90 @@ setLoading(false)
   }
 
   function closeCheckout() {
-    if (checkoutBusy) return
+    if (checkoutBusyRef.current) return
     setSelectedGift(null)
     setCheckoutError('')
   }
 
   useEffect(() => {
     if (!selectedGift) return undefined
-    guestNameInput.current?.focus()
+    const body = document.body
+    const scrollY = window.scrollY
+    const previousBodyStyles = {
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+    }
+    body.style.position = 'fixed'
+    body.style.top = `-${scrollY}px`
+    body.style.left = '0'
+    body.style.right = '0'
+    body.style.width = '100%'
 
-    function handleEscape(event) {
-      if (event.key === 'Escape' && !checkoutBusy) {
+    const updateViewport = () => {
+      const backdrop = checkoutDialog.current?.parentElement
+      if (!backdrop) return
+      const viewport = window.visualViewport
+      backdrop.style.setProperty(
+        '--checkout-viewport-height',
+        `${viewport?.height || window.innerHeight}px`
+      )
+      backdrop.style.setProperty(
+        '--checkout-viewport-offset',
+        `${viewport?.offsetTop || 0}px`
+      )
+    }
+    updateViewport()
+    window.visualViewport?.addEventListener('resize', updateViewport)
+    window.visualViewport?.addEventListener('scroll', updateViewport)
+    const focusFrame = window.requestAnimationFrame(() => {
+      if (window.matchMedia('(pointer: coarse)').matches) {
+        checkoutDialog.current?.focus({ preventScroll: true })
+      } else {
+        guestNameInput.current?.focus({ preventScroll: true })
+      }
+    })
+
+    function handleDialogKeydown(event) {
+      if (event.key === 'Escape' && !checkoutBusyRef.current) {
         setSelectedGift(null)
         setCheckoutError('')
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const focusable = checkoutDialog.current?.querySelectorAll(
+        'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), a[href]'
+      )
+      if (!focusable?.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
       }
     }
 
-    window.addEventListener('keydown', handleEscape)
-    return () => window.removeEventListener('keydown', handleEscape)
-  }, [selectedGift, checkoutBusy])
+    window.addEventListener('keydown', handleDialogKeydown)
+    return () => {
+      window.cancelAnimationFrame(focusFrame)
+      window.visualViewport?.removeEventListener('resize', updateViewport)
+      window.visualViewport?.removeEventListener('scroll', updateViewport)
+      window.removeEventListener('keydown', handleDialogKeydown)
+      body.style.position = previousBodyStyles.position
+      body.style.top = previousBodyStyles.top
+      body.style.left = previousBodyStyles.left
+      body.style.right = previousBodyStyles.right
+      body.style.width = previousBodyStyles.width
+      window.scrollTo(0, scrollY)
+      if (previousFocus.current?.isConnected) previousFocus.current.focus()
+    }
+  }, [selectedGift])
 
   async function handleCheckoutSubmit(event) {
     event.preventDefault()
@@ -195,6 +292,7 @@ setLoading(false)
     }
 
     setCheckoutBusy(true)
+    checkoutBusyRef.current = true
     setCheckoutError('')
     try {
       const response = await fetch('/api/mercado-pago/criar-preferencia', {
@@ -223,8 +321,14 @@ setLoading(false)
           SUPABASE_PAYMENT_LEDGER_FAILURE: 'Não foi possível registrar o pagamento com segurança. Tente novamente mais tarde.',
           SUPABASE_SCHEMA_FAILURE: 'A estrutura do banco não corresponde à versão esperada pelo fluxo de pagamentos. Verifique os logs da função na Vercel.',
           SUPABASE_SCHEMA_OR_PERMISSION: 'Não foi possível acessar o catálogo ou registrar o pagamento. Verifique os logs da função na Vercel.',
+          SUPABASE_GIFT_RESERVATION_FAILURE: 'Não foi possível reservar este presente. Tente novamente mais tarde.',
           MERCADOPAGO_SERVER_CONFIGURATION: 'Configure o token do Mercado Pago e a URL pública no ambiente server-side da Vercel.',
           MERCADOPAGO_PREFERENCE_FAILED: 'O Mercado Pago não conseguiu criar o checkout. Verifique os logs da função na Vercel.',
+          GIFT_UNAVAILABLE: 'Outra pessoa acabou de reservar este presente. A lista foi atualizada; escolha outro.',
+          GIFT_ALREADY_PAID: 'Este presente já foi presenteado.',
+        }
+        if (data.code === 'GIFT_UNAVAILABLE' || data.code === 'GIFT_ALREADY_PAID') {
+          refreshGifts.current?.()
         }
         throw new Error(configMessages[data.code] || data.error || 'Não foi possível iniciar o pagamento.')
       }
@@ -232,6 +336,7 @@ setLoading(false)
     } catch (checkoutFailure) {
       setCheckoutError(checkoutFailure.message || 'Não foi possível conectar ao servidor.')
     } finally {
+      checkoutBusyRef.current = false
       setCheckoutBusy(false)
     }
   }
@@ -335,7 +440,7 @@ setLoading(false)
         </a>
       </aside>
 
-      {selectedGift && (
+      {selectedGift && createPortal(
         <div
           className="gift-checkout-backdrop"
           onMouseDown={(event) => {
@@ -344,6 +449,8 @@ setLoading(false)
         >
           <section
             className="gift-checkout-dialog"
+            ref={checkoutDialog}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-labelledby="gift-checkout-title"
@@ -399,7 +506,8 @@ setLoading(false)
               </div>
             </form>
           </section>
-        </div>
+        </div>,
+        document.body
       )}
     </PageLayout>
   )

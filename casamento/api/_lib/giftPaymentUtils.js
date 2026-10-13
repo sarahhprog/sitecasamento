@@ -7,6 +7,7 @@ const KNOWN_PAYMENT_STATUSES = new Set([
   'in_process',
   'rejected',
   'cancelled',
+  'expired',
   'refunded',
   'charged_back',
   'in_mediation',
@@ -56,7 +57,8 @@ export function paymentMatchesPurchase(payment, purchase) {
     && payment?.currency_id === 'BRL'
     && Number.isFinite(paymentAmount)
     && Math.round(paymentAmount * 100) === Math.round(purchaseAmount * 100)
-    && String(payment?.preference_id || '') === String(purchase?.preference_id || '')
+    && (!purchase?.preference_id
+      || String(payment?.preference_id || '') === String(purchase.preference_id))
 }
 
 export function verifyWebhookSignature({ signature, requestId, dataId, secret }) {

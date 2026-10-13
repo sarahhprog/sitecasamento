@@ -53,6 +53,7 @@ test('matches a verified Mercado Pago payment to the stored purchase', () => {
   assert.equal(paymentMatchesPurchase(payment, purchase), true)
   assert.equal(paymentMatchesPurchase({ ...payment, transaction_amount: 10 }, purchase), false)
   assert.equal(paymentMatchesPurchase({ ...payment, external_reference: 'other' }, purchase), false)
+  assert.equal(paymentMatchesPurchase(payment, { ...purchase, preference_id: null }), true)
 })
 
 test('verifies webhook signatures and rejects tampered or incomplete data', () => {
@@ -71,5 +72,6 @@ test('verifies webhook signatures and rejects tampered or incomplete data', () =
 test('maps unknown payment statuses conservatively', () => {
   assert.equal(normalizePaymentStatus('approved'), 'approved')
   assert.equal(normalizePaymentStatus('in_process'), 'in_process')
+  assert.equal(normalizePaymentStatus('expired'), 'expired')
   assert.equal(normalizePaymentStatus('unexpected'), 'unknown')
 })
