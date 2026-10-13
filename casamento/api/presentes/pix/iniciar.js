@@ -42,13 +42,12 @@ export default async function handler(req, res, dependencies = {}) {
       ? settingsByKey.get('pix_recipient_name').trim() || 'Hayato Miyata Rocha'
       : 'Hayato Miyata Rocha'
 
-    failureStage = 'supabase_pix_reservation'
-    const { data: rows, error } = await supabase.rpc('reserve_gift_payment', {
+    failureStage = 'supabase_pix_payment_creation'
+    const { data: rows, error } = await supabase.rpc('create_gift_payment', {
       p_gift_id: input.giftId,
       p_idempotency_key: input.idempotencyKey,
       p_guest_name: input.guestName,
       p_message: input.message,
-      p_reservation_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       p_payment_method: 'pix',
     })
 
@@ -60,21 +59,27 @@ export default async function handler(req, res, dependencies = {}) {
         error: 'Este presente não está mais disponível. Atualize a lista e escolha outro.',
       })
     }
+    if (payment.payment_status !== 'pending' && payment.payment_status !== 'in_process') {
+      return res.status(409).json({
+        code: 'PIX_REQUEST_CLOSED',
+        error: 'Esta solicitação PIX já foi concluída. Atualize a lista para continuar.',
+      })
+    }
 
     return res.status(201).json({
       purchase_id: payment.idempotency_key,
       gift_name: payment.gift_name,
       amount: payment.amount,
-      reservation_expires_at: payment.reservation_expires_at,
       pix_key: pixKey,
       recipient_name: recipientName,
+      confirmation_requested: payment.payment_status === 'in_process',
     })
   } catch (error) {
-    console.error('Falha ao reservar presente para PIX:', {
+    console.error('Falha ao iniciar pagamento PIX:', {
       stage: failureStage,
-      operation: 'reserve_pix_gift',
+      operation: 'create_pix_payment',
       ...safeErrorDetails(error),
     })
-    return res.status(503).json({ error: 'Não foi possível reservar este presente agora.' })
+    return res.status(503).json({ error: 'Não foi possível iniciar o pagamento PIX agora.' })
   }
 }

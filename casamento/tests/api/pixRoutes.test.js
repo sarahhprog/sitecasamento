@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import reservePix from '../../api/presentes/pix/reservar.js'
+import startPix from '../../api/presentes/pix/iniciar.js'
 import requestPixConfirmation from '../../api/presentes/pix/solicitar-confirmacao.js'
 import { copyPixKeyToClipboard } from '../../src/lib/pix.js'
 
@@ -38,11 +38,11 @@ function withServerEnvironment(run) {
 const giftId = '123e4567-e89b-42d3-a456-426614174000'
 const idempotencyKey = '123e4567-e89b-42d3-a456-426614174001'
 
-test('does not create a reservation or return PIX details when no key is configured', async () => {
+test('does not create a payment or return a fake PIX key when none is configured', async () => {
   await withServerEnvironment(async () => {
     const response = createResponse()
     let rpcCalled = false
-    await reservePix({
+    await startPix({
       method: 'POST',
       body: { giftId, idempotencyKey, guestName: 'Convidada' },
     }, response, {
@@ -67,11 +67,11 @@ test('does not create a reservation or return PIX details when no key is configu
   })
 })
 
-test('reserves PIX using the server RPC and the server-returned gift snapshot', async () => {
+test('starts PIX without reserving the gift and uses the server payment snapshot', async () => {
   await withServerEnvironment(async () => {
     const response = createResponse()
     let rpcCall
-    await reservePix({
+    await startPix({
       method: 'POST',
       body: { giftId, idempotencyKey, guestName: 'Convidada', message: 'Com carinho' },
     }, response, {
@@ -93,7 +93,7 @@ test('reserves PIX using the server RPC and the server-returned gift snapshot', 
               idempotency_key: idempotencyKey,
               gift_name: 'Jantar especial',
               amount: 180,
-              reservation_expires_at: '2026-10-14T12:00:00.000Z',
+              payment_status: 'pending',
             }],
             error: null,
           }
@@ -102,7 +102,7 @@ test('reserves PIX using the server RPC and the server-returned gift snapshot', 
     })
 
     assert.equal(response.statusCode, 201)
-    assert.equal(rpcCall.name, 'reserve_gift_payment')
+    assert.equal(rpcCall.name, 'create_gift_payment')
     assert.equal(rpcCall.parameters.p_payment_method, 'pix')
     assert.equal(response.body.gift_name, 'Jantar especial')
     assert.equal(response.body.amount, 180)
@@ -137,22 +137,6 @@ test('a guest payment-completed request records only an administrative review re
   })
 })
 
-test('expired PIX reservation is not reported as submitted', async () => {
-  await withServerEnvironment(async () => {
-    const response = createResponse()
-    await requestPixConfirmation({
-      method: 'POST',
-      body: { idempotencyKey },
-    }, response, {
-      getSupabaseAdmin: () => ({
-        rpc: async () => ({ data: 'expired', error: null }),
-      }),
-    })
-    assert.equal(response.statusCode, 410)
-    assert.equal(response.body.status, 'expired')
-  })
-})
-
 test('copies a PIX key with the browser clipboard API', async () => {
   const copied = []
   await copyPixKeyToClipboard('pix@example.com', {
@@ -168,13 +152,14 @@ test('rejects empty or unsupported clipboard inputs', async () => {
 
 test('migration gates administrative actions and locks the gift before confirmation', () => {
   const migration = readFileSync(
-    new URL('../../supabase/migrations/20261014100000_manual_pix_and_gift_controls.sql', import.meta.url),
+    new URL('../../supabase/migrations/20261014110000_remove_gift_reservations.sql', import.meta.url),
     'utf8',
   )
   assert.match(migration, /admin_review_pix_payment[\s\S]*auth\.role\(\)[\s\S]*is_wedding_admin/i)
   assert.match(migration, /admin_set_gift_availability[\s\S]*auth\.role\(\)[\s\S]*is_wedding_admin/i)
-  assert.match(migration, /select \* into gift_row from public\.gifts where id = payment_row\.gift_id for update/i)
-  assert.match(migration, /reservation_payment_key is distinct from p_idempotency_key/i)
+  assert.match(migration, /select \* into gift_row[\s\S]*from public\.gifts[\s\S]*for update/i)
+  assert.match(migration, /payment_status = 'in_process'/i)
+  assert.match(migration, /drop function if exists public\.reserve_gift_payment/i)
   assert.match(migration, /manual_availability_override/i)
   assert.match(migration, /gift_payment_events/i)
 })

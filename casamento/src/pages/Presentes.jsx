@@ -98,7 +98,7 @@ function Presentes() {
       const { data, count, error: queryError } = await requireSupabase()
         .from('gifts')
         .select(
-          'id,name,description,value,category,image_url,file_url,file_type,available,public_visible,created_at,reservation_expires_at,reservation_in_process,gifted_at',
+          'id,name,description,value,category,image_url,file_url,file_type,available,public_visible,created_at',
           { count: 'exact' }
         )
         .eq('public_visible', true)
@@ -119,16 +119,8 @@ function Presentes() {
         setRemoteGifts([])
         setGiftCount(0)
       } else {
-        const now = Date.now()
         setRemoteGifts((data || []).map((gift) => {
-          const reservationActive = gift.reservation_expires_at
-            && new Date(gift.reservation_expires_at).getTime() > now
-          return {
-            ...gift,
-            available: gift.available
-              && !gift.gifted_at
-              && !reservationActive,
-          }
+          return { ...gift, available: gift.available }
         }))
         setGiftCount(count || 0)
         setError('')
@@ -337,10 +329,9 @@ function Presentes() {
           SUPABASE_PAYMENT_LEDGER_FAILURE: 'Não foi possível registrar o pagamento com segurança. Tente novamente mais tarde.',
           SUPABASE_SCHEMA_FAILURE: 'A estrutura do banco não corresponde à versão esperada pelo fluxo de pagamentos. Verifique os logs da função na Vercel.',
           SUPABASE_SCHEMA_OR_PERMISSION: 'Não foi possível acessar o catálogo ou registrar o pagamento. Verifique os logs da função na Vercel.',
-          SUPABASE_GIFT_RESERVATION_FAILURE: 'Não foi possível reservar este presente. Tente novamente mais tarde.',
           MERCADOPAGO_SERVER_CONFIGURATION: 'Configure o token do Mercado Pago e a URL pública no ambiente server-side da Vercel.',
           MERCADOPAGO_PREFERENCE_FAILED: 'O Mercado Pago não conseguiu criar o checkout. Verifique os logs da função na Vercel.',
-          GIFT_UNAVAILABLE: 'Outra pessoa acabou de reservar este presente. A lista foi atualizada; escolha outro.',
+          GIFT_UNAVAILABLE: 'Este presente ficou indisponível. A lista foi atualizada; escolha outro.',
           GIFT_ALREADY_PAID: 'Este presente já foi presenteado.',
         }
         if (data.code === 'GIFT_UNAVAILABLE' || data.code === 'GIFT_ALREADY_PAID') {
@@ -366,7 +357,7 @@ function Presentes() {
     checkoutBusyRef.current = true
     setCheckoutError('')
     try {
-      const reserveResponse = await fetch('/api/presentes/pix/reservar', {
+      const pixResponse = await fetch('/api/presentes/pix/iniciar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -376,18 +367,18 @@ function Presentes() {
           message: guest.trimmedMessage,
         }),
       })
-      const reservation = await reserveResponse.json()
-      if (!reserveResponse.ok || !reservation.purchase_id) {
-        if (reservation.code === 'GIFT_UNAVAILABLE') refreshGifts.current?.()
-        throw new Error(reservation.error || 'Não foi possível reservar este presente para o PIX.')
+      const pixResult = await pixResponse.json()
+      if (!pixResponse.ok || !pixResult.purchase_id) {
+        if (pixResult.code === 'GIFT_UNAVAILABLE') refreshGifts.current?.()
+        throw new Error(pixResult.error || 'Não foi possível iniciar o pagamento via PIX.')
       }
 
       setPixSettings({
-        pixKey: reservation.pix_key,
-        recipientName: reservation.recipient_name,
+        pixKey: pixResult.pix_key,
+        recipientName: pixResult.recipient_name,
       })
-      setPixPayment(reservation)
-      setCheckoutStep('pix')
+      setPixPayment(pixResult)
+      setCheckoutStep(pixResult.confirmation_requested ? 'pix-confirmed' : 'pix')
     } catch (pixError) {
       setCheckoutError(pixError.message || 'Não foi possível iniciar o pagamento via PIX.')
     } finally {
@@ -612,7 +603,7 @@ function Presentes() {
               <p className="gift-pix-summary">
                 <strong>{pixPayment.gift_name}</strong> · {formatValue(pixPayment.amount)}
               </p>
-              <p>Após realizar a transferência no aplicativo do banco, avise-nos por aqui. O presente só será confirmado depois que o pagamento for verificado pelos noivos.</p>
+              <p>Após realizar a transferência no aplicativo do banco, avise-nos por aqui. A disponibilidade do presente só mudará depois que os noivos verificarem o pagamento.</p>
               {checkoutError && <p className="admin-alert" role="alert">{checkoutError}</p>}
               <div className="gift-checkout-actions">
                 <button className="button button-muted" type="button" onClick={closeCheckout} disabled={checkoutBusy}>Fechar</button>
@@ -625,7 +616,7 @@ function Presentes() {
             {checkoutStep === 'pix-confirmed' && <section className="gift-pix-details">
               <span className="eyebrow">Aguardando verificação</span>
               <h3>Recebemos seu aviso!</h3>
-              <p>Vamos verificar o pagamento antes de confirmar o presente. Agradecemos por celebrar esse momento tão especial com a gente. 💚</p>
+              <p>Vamos verificar o pagamento antes de atualizar a disponibilidade do presente. Agradecemos por celebrar esse momento tão especial com a gente. 💚</p>
               <button className="button" type="button" onClick={closeCheckout}>Fechar</button>
             </section>}
           </section>

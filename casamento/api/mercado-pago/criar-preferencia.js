@@ -54,24 +54,23 @@ export default async function handler(req, res, dependencies = {}) {
     })
   }
 
-  let failureStage = 'supabase_gift_reservation'
-  let failureOperation = 'reserve_gift_and_create_payment'
+  let failureStage = 'supabase_payment_creation'
+  let failureOperation = 'create_gift_payment'
   try {
     const supabase = (dependencies.getSupabaseAdmin || getSupabaseAdmin)()
-    const reservationExpiresAt = new Date(Date.now() + 30 * 60 * 1000)
-    const { data: reservations, error: reservationError } = await supabase.rpc(
-      'reserve_gift_payment',
+    const { data: payments, error: paymentError } = await supabase.rpc(
+      'create_gift_payment',
       {
         p_gift_id: input.giftId,
         p_idempotency_key: input.idempotencyKey,
         p_guest_name: input.guestName,
         p_message: input.message,
-        p_reservation_expires_at: reservationExpiresAt.toISOString(),
+        p_payment_method: 'card',
       },
     )
 
-    if (reservationError) throw reservationError
-    const payment = Array.isArray(reservations) ? reservations[0] : reservations
+    if (paymentError) throw paymentError
+    const payment = Array.isArray(payments) ? payments[0] : payments
     if (!payment) {
       return res.status(409).json({
         error: 'Este presente não está mais disponível. Atualize a lista e escolha outro.',
@@ -89,7 +88,6 @@ export default async function handler(req, res, dependencies = {}) {
     const amount = Math.round(Number(payment.amount) * 100) / 100
     const installments = installmentsForAmount(amount)
     const giftName = payment.gift_name
-    const expiresAt = payment.reservation_expires_at || reservationExpiresAt.toISOString()
     failureStage = 'mercadopago_preference'
     failureOperation = 'create_mercadopago_preference'
     const preference = new Preference(new MercadoPagoConfig({ accessToken }))
@@ -107,13 +105,11 @@ export default async function handler(req, res, dependencies = {}) {
         gift_payment_id: payment.idempotency_key,
         gift_id: payment.gift_id,
       },
-      expiration_date_from: new Date(Date.now() - 60 * 1000).toISOString(),
-      expiration_date_to: expiresAt,
       notification_url: `${siteUrl}/api/mercado-pago/webhook`,
       back_urls: {
-        success: `${siteUrl}/pagamento/resultado?purchase=${input.idempotencyKey}`,
-        pending: `${siteUrl}/pagamento/resultado?purchase=${input.idempotencyKey}`,
-        failure: `${siteUrl}/pagamento/resultado?purchase=${input.idempotencyKey}`,
+        success: `${siteUrl}/pagamento/resultado?purchase=${input.idempotencyKey}&return=success`,
+        pending: `${siteUrl}/pagamento/resultado?purchase=${input.idempotencyKey}&return=pending`,
+        failure: `${siteUrl}/pagamento/resultado?purchase=${input.idempotencyKey}&return=failure`,
       },
       auto_return: 'approved',
       payment_methods: { installments },
@@ -156,7 +152,6 @@ export default async function handler(req, res, dependencies = {}) {
     const isSupabaseFailure = failureStage.startsWith('supabase_')
     const errorDetails = safeErrorDetails(error)
     const isSchemaFailure = SCHEMA_ERROR_CODES.has(errorDetails.code)
-    const isReservationFailure = failureStage === 'supabase_gift_reservation'
     const isServerConfigurationFailure = errorDetails.code === 'SUPABASE_SERVER_ROLE_REQUIRED'
     console.error('Falha ao iniciar pagamento de presente:', {
       stage: failureStage,
@@ -168,16 +163,12 @@ export default async function handler(req, res, dependencies = {}) {
       : isSupabaseFailure
         ? isSchemaFailure
           ? 'SUPABASE_SCHEMA_FAILURE'
-          : isReservationFailure
-            ? 'SUPABASE_GIFT_RESERVATION_FAILURE'
-            : 'SUPABASE_PAYMENT_LEDGER_FAILURE'
+          : 'SUPABASE_PAYMENT_LEDGER_FAILURE'
         : 'MERCADOPAGO_PREFERENCE_FAILED'
     const message = isServerConfigurationFailure
       ? 'A conexão privada do Supabase não está configurada corretamente.'
       : isSupabaseFailure
-        ? isReservationFailure
-          ? 'Não foi possível reservar este presente.'
-          : 'Não foi possível registrar o pagamento com segurança.'
+        ? 'Não foi possível registrar o pagamento com segurança.'
         : 'Não foi possível criar o checkout no Mercado Pago.'
 
     return res.status(isSupabaseFailure ? 503 : 502).json({ error: message, code })

@@ -167,7 +167,7 @@ test('does not query Supabase for a malformed public status reference', async ()
   assert.equal(response.statusCode, 400)
 })
 
-test('atomically reserves a gift and creates a preference using the server price', async () => {
+test('creates a payment without reserving the gift and uses the server price', async () => {
   const restore = setServerEnvironment({
     SUPABASE_SERVICE_ROLE_KEY: 'test-service-key',
     VITE_SUPABASE_URL: 'https://project.supabase.co',
@@ -182,7 +182,6 @@ test('atomically reserves a gift and creates a preference using the server price
     guest_name: 'Convidado de teste',
     message: null,
     payment_status: 'pending',
-    reservation_expires_at: '2026-10-13T15:30:00.000Z',
     checkout_url: null,
     preference_id: null,
   }
@@ -195,9 +194,11 @@ test('atomically reserves a gift and creates a preference using the server price
   const queries = [
     createQuery({ data: updatedPayment, error: null }),
   ]
-  const rpcResults = [
-    Promise.resolve({ data: [payment], error: null }),
-  ]
+  const rpcResults = [ (name, parameters) => {
+    assert.equal(name, 'create_gift_payment')
+    assert.equal(parameters.p_payment_method, 'card')
+    return Promise.resolve({ data: [payment], error: null })
+  }]
   const response = createResponse()
   try {
     await createPreference({
@@ -218,13 +219,16 @@ test('atomically reserves a gift and creates a preference using the server price
   assert.equal(response.body.init_point, updatedPayment.checkout_url)
   assert.equal(preferenceInput.body.items[0].unit_price, 180)
   assert.equal(preferenceInput.body.items[0].title, 'Jantar especial')
-  assert.equal(preferenceInput.body.expiration_date_to, payment.reservation_expires_at)
+  assert.equal('expiration_date_to' in preferenceInput.body, false)
+  assert.match(preferenceInput.body.back_urls.success, /^https:\/\/wedding\.example\/pagamento\/resultado\?purchase=/)
+  assert.match(preferenceInput.body.back_urls.failure, /return=failure$/)
+  assert.doesNotMatch(JSON.stringify(preferenceInput.body.back_urls), /localhost/i)
   assert.equal(preferenceInput.idempotencyKey, purchaseId)
   assert.equal(queries.length, 0)
   assert.equal(rpcResults.length, 0)
 })
 
-test('identifies a reservation permission failure without claiming the payment table is missing', async () => {
+test('identifies payment creation permission failures without exposing database details', async () => {
   const restore = setServerEnvironment({
     SUPABASE_SERVICE_ROLE_KEY: 'test-service-key',
     VITE_SUPABASE_URL: 'https://project.supabase.co',
@@ -247,15 +251,15 @@ test('identifies a reservation permission failure without claiming the payment t
   }
 
   assert.equal(response.statusCode, 503)
-  assert.equal(response.body.code, 'SUPABASE_GIFT_RESERVATION_FAILURE')
+  assert.equal(response.body.code, 'SUPABASE_PAYMENT_LEDGER_FAILURE')
   assert.doesNotMatch(response.body.error, /migration/i)
-  assert.equal(logged[0][1].stage, 'supabase_gift_reservation')
-  assert.equal(logged[0][1].operation, 'reserve_gift_and_create_payment')
+  assert.equal(logged[0][1].stage, 'supabase_payment_creation')
+  assert.equal(logged[0][1].operation, 'create_gift_payment')
   assert.equal(logged[0][1].code, '42501')
   assert.equal(JSON.stringify(logged).includes('private test detail'), false)
 })
 
-test('reports a missing reservation function as a schema failure', async () => {
+test('reports a missing payment creation function as a schema failure', async () => {
   const restore = setServerEnvironment({
     SUPABASE_SERVICE_ROLE_KEY: 'test-service-key',
     VITE_SUPABASE_URL: 'https://project.supabase.co',
@@ -280,7 +284,7 @@ test('reports a missing reservation function as a schema failure', async () => {
   assert.equal(response.body.code, 'SUPABASE_SCHEMA_FAILURE')
 })
 
-test('rejects an already reserved gift without creating a Mercado Pago preference', async () => {
+test('rejects an unavailable gift without creating a Mercado Pago preference', async () => {
   const restore = setServerEnvironment({
     SUPABASE_SERVICE_ROLE_KEY: 'test-service-key',
     VITE_SUPABASE_URL: 'https://project.supabase.co',
@@ -635,19 +639,50 @@ test('webhook sends timestamps to the database function that serializes payment 
   assert.equal(rpcParameters.p_payment_updated_at, input.payment.date_last_updated)
 })
 
-test('reservation migration serializes checkout and keeps gift status separate from admin availability', () => {
+test('latest migration removes reservation functions and serializes only payment confirmations', () => {
   const migration = readFileSync(
-    new URL('../../supabase/migrations/20261013150000_gift_reservations.sql', import.meta.url),
+    new URL('../../supabase/migrations/20261014110000_remove_gift_reservations.sql', import.meta.url),
     'utf8',
   )
 
-  assert.match(migration, /from public\.gifts\s+where id = p_gift_id\s+for update/i)
-  assert.match(migration, /reservation_payment_key is distinct from p_idempotency_key/i)
+  assert.doesNotMatch(migration, /create or replace function public\.reserve_gift_payment/i)
+  assert.match(migration, /drop function if exists public\.reserve_gift_payment/i)
+  assert.match(migration, /create or replace function public\.create_gift_payment/i)
+  assert.match(migration, /available = false/i)
+  assert.match(migration, /from public\.gifts\s+where id = payment_row\.gift_id\s+for update/i)
   assert.match(migration, /gifted_payment_key = p_idempotency_key/i)
-  assert.match(migration, /reservation_payment_key = p_idempotency_key/i)
   assert.match(migration, /payment_row\.mp_payment_updated_at is not null[\s\S]*p_payment_updated_at <= payment_row\.mp_payment_updated_at/i)
-  assert.match(migration, /payment_row\.payment_status = 'approved'[\s\S]*p_payment_status in \('pending', 'in_process', 'rejected', 'cancelled'\)/i)
-  assert.match(migration, /payment_row\.payment_status in \('rejected', 'cancelled', 'expired'\)[\s\S]*p_payment_status in \('pending', 'in_process'\)/i)
-  assert.match(migration, /revoke all on function public\.reserve_gift_payment[\s\S]*from public, anon, authenticated/i)
+  assert.match(migration, /manual_availability_updated_at/i)
+  assert.match(migration, /set reservation_payment_key = null[\s\S]*reservation_expires_at = null/i)
+  assert.match(migration, /event_type, previous_status, next_status, details[\s\S]*reservation_disabled/i)
+  assert.match(migration, /if p_payment_status = 'approved'[\s\S]*and gift_row\.available/i)
+  assert.match(migration, /gift_row\.gifted_payment_key <> p_idempotency_key/i)
+  assert.match(migration, /set available = p_available/i)
   assert.match(migration, /revoke all on function public\.apply_gift_payment_status[\s\S]*from public, anon, authenticated/i)
+})
+
+test('present and payment forms keep mobile content scrollable and expose status messages', () => {
+  const page = readFileSync(
+    new URL('../../src/pages/Presentes.jsx', import.meta.url),
+    'utf8',
+  )
+  const styles = readFileSync(
+    new URL('../../src/App.css', import.meta.url),
+    'utf8',
+  )
+  const returnPage = readFileSync(
+    new URL('../../src/pages/PagamentoResultado.jsx', import.meta.url),
+    'utf8',
+  )
+
+  assert.match(page, /Presentear via cartão/)
+  assert.match(page, /Presentear via PIX/)
+  assert.match(page, /Já fiz o pagamento/)
+  assert.match(page, /role="alert"/)
+  assert.match(styles, /\.gift-checkout-backdrop\s*\{[\s\S]*position: fixed/)
+  assert.match(styles, /\.gift-checkout-dialog\s*\{[\s\S]*max-height:[\s\S]*overflow-y: auto/)
+  assert.match(styles, /env\(safe-area-inset-bottom\)/)
+  assert.match(returnPage, /aria-live="polite"/)
+  assert.match(returnPage, /Voltar à lista de presentes/)
+  assert.doesNotMatch(page, /reservation_(?:expires_at|in_process)|reserved|reservar/i)
 })

@@ -27,7 +27,6 @@ export default async function handler(req, res, dependencies = {}) {
     const messages = {
       requested: [200, 'Solicitação registrada. A confirmação depende da verificação do pagamento.'],
       already_requested: [200, 'Sua solicitação já está aguardando verificação.'],
-      expired: [410, 'A reserva expirou. Atualize a lista e escolha outro presente.'],
       not_found: [404, 'Solicitação não encontrada.'],
       wrong_method: [409, 'Esta solicitação não corresponde a um pagamento PIX.'],
       not_pending: [409, 'Esta solicitação não pode mais ser atualizada.'],

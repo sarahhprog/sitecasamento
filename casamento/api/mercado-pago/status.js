@@ -16,20 +16,14 @@ export default async function handler(req, res, dependencies = {}) {
   try {
     const { data, error } = await (dependencies.getSupabaseAdmin || getSupabaseAdmin)()
       .from('gift_payments')
-      .select('payment_status,reservation_expires_at')
+      .select('payment_status')
       .eq('idempotency_key', purchaseId)
       .maybeSingle()
 
     if (error) throw error
     if (!data) return res.status(404).json({ error: 'Pagamento não encontrado.' })
 
-    const reservationExpired = data.reservation_expires_at
-      && new Date(data.reservation_expires_at).getTime() <= Date.now()
-    const status = reservationExpired && ['pending', 'in_process'].includes(data.payment_status)
-      ? 'expired'
-      : data.payment_status
-
-    return res.status(200).json({ status })
+    return res.status(200).json({ status: data.payment_status })
   } catch (error) {
     console.error('Erro ao consultar status do pagamento:', {
       stage: 'supabase_payment_status_lookup',
