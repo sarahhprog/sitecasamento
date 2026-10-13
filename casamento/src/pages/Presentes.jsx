@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import PageLayout from './PageLayout'
-import { gifts } from '../data/gifts'
 import { isSupabaseConfigured, requireSupabase } from '../lib/supabase'
 
 const PAGE_SIZE = 12
@@ -64,7 +63,9 @@ function Presentes() {
   const [remoteGifts, setRemoteGifts] = useState([])
   const [giftCount, setGiftCount] = useState(0)
   const [loading, setLoading] = useState(isSupabaseConfigured)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(
+    isSupabaseConfigured ? '' : 'A lista de presentes não está configurada neste ambiente.'
+  )
   const [page, setPage] = useState(1)
   const [selectedGift, setSelectedGift] = useState(null)
   const [guestName, setGuestName] = useState('')
@@ -74,9 +75,7 @@ function Presentes() {
   const [checkoutBusy, setCheckoutBusy] = useState(false)
   const guestNameInput = useRef(null)
 
-  const pageCount = Math.ceil(
-    (isSupabaseConfigured ? giftCount : gifts.length) / PAGE_SIZE
-  )
+  const pageCount = Math.ceil(giftCount / PAGE_SIZE)
 
   const currentPage = Math.min(page, Math.max(pageCount, 1))
 
@@ -103,28 +102,32 @@ function Presentes() {
 
      
 if (queryError) {
-  console.error('Erro ao carregar presentes:', queryError)
-  setError('Não foi possível carregar os presentes cadastrados. Exibindo a lista alternativa.')
-  setRemoteGifts(
-    gifts.map((gift) => ({
-      ...gift,
-      available: gift.status === 'available',
-      image_url: gift.image,
-    }))
-  )
-  setGiftCount(gifts.length)
+  console.error('Erro ao carregar presentes:', {
+    code: queryError.code || 'UNKNOWN',
+    status: queryError.status || null,
+  })
+  setError('Não foi possível carregar os presentes cadastrados. Tente novamente mais tarde.')
+  setRemoteGifts([])
+  setGiftCount(0)
 } else {
   setRemoteGifts(data || [])
   setGiftCount(count || 0)
+  setError('')
 }
 
-      setLoading(false)
+setLoading(false)
     }
 
     loadGifts().catch((loadError) => {
       if (!active) return
 
-      setError(loadError.message)
+      console.error('Falha ao carregar a lista de presentes:', {
+        name: loadError?.name || 'Error',
+        code: loadError?.code || loadError?.cause?.code || 'UNKNOWN',
+      })
+      setRemoteGifts([])
+      setGiftCount(0)
+      setError('Não foi possível carregar os presentes cadastrados. Tente novamente mais tarde.')
       setLoading(false)
     })
 
@@ -133,24 +136,9 @@ if (queryError) {
     }
   }, [currentPage])
 
-  const publicGifts = isSupabaseConfigured
-    ? remoteGifts
-    : gifts.map((gift) => ({
-        ...gift,
-        available: gift.status === 'available',
-        image_url: gift.image,
-      }))
+  const publicGifts = remoteGifts
 
-  const visibleGifts = useMemo(
-    () =>
-      isSupabaseConfigured
-        ? publicGifts
-        : publicGifts.slice(
-            (currentPage - 1) * PAGE_SIZE,
-            currentPage * PAGE_SIZE
-          ),
-    [publicGifts, currentPage]
-  )
+  const visibleGifts = publicGifts
 
   function changePage(nextPage) {
     setLoading(isSupabaseConfigured)
@@ -231,7 +219,10 @@ if (queryError) {
       if (!response.ok || !data.init_point) {
         const configMessages = {
           SUPABASE_SERVER_CONFIGURATION: 'Configure a conexão privada do Supabase no ambiente server-side da Vercel.',
-          SUPABASE_SCHEMA_OR_PERMISSION: 'A tabela de pagamentos não está disponível. Aplique a migration do fluxo de presentes no Supabase.',
+          SUPABASE_GIFT_CATALOG_FAILURE: 'Não foi possível consultar os dados deste presente. Tente novamente mais tarde.',
+          SUPABASE_PAYMENT_LEDGER_FAILURE: 'Não foi possível registrar o pagamento com segurança. Tente novamente mais tarde.',
+          SUPABASE_SCHEMA_FAILURE: 'A estrutura do banco não corresponde à versão esperada pelo fluxo de pagamentos. Verifique os logs da função na Vercel.',
+          SUPABASE_SCHEMA_OR_PERMISSION: 'Não foi possível acessar o catálogo ou registrar o pagamento. Verifique os logs da função na Vercel.',
           MERCADOPAGO_SERVER_CONFIGURATION: 'Configure o token do Mercado Pago e a URL pública no ambiente server-side da Vercel.',
           MERCADOPAGO_PREFERENCE_FAILED: 'O Mercado Pago não conseguiu criar o checkout. Verifique os logs da função na Vercel.',
         }
@@ -275,7 +266,7 @@ if (queryError) {
               ))}
             </div>
 
-            {publicGifts.length === 0 && (
+            {publicGifts.length === 0 && !error && (
               <p>Nenhum presente disponível no momento.</p>
             )}
 
