@@ -25,7 +25,7 @@ export default async function handler(req, res, dependencies = {}) {
 
     const reservationExpired = data.reservation_expires_at
       && new Date(data.reservation_expires_at).getTime() <= Date.now()
-    const status = reservationExpired && data.payment_status === 'pending'
+    const status = reservationExpired && ['pending', 'in_process'].includes(data.payment_status)
       ? 'expired'
       : data.payment_status
 

@@ -34,14 +34,25 @@ const resources = {
       { name: 'description', label: 'Descrição', type: 'textarea' },
       { name: 'value', label: 'Valor', type: 'number', required: true, step: '0.01' },
       { name: 'category', label: 'Categoria' },
-      { name: 'available', label: 'Disponível', type: 'checkbox' },
       { name: 'public_visible', label: 'Exibir no site público', type: 'checkbox' },
       { name: 'upload', label: 'Foto do presente (JPG, PNG ou WEBP)', type: 'file', accept: '.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp' },
       { name: 'remove_file', label: 'Remover arquivo atual', type: 'checkbox' },
       { name: 'payment_link', label: 'Link de pagamento futuro', type: 'url' },
       { name: 'payment_identifier', label: 'Identificador de pagamento futuro' },
     ],
-    columns: ['name', 'value', 'category', 'available', 'public_visible', 'file_type'],
+    columns: ['name', 'value', 'category', 'available', 'gift_state', 'public_visible', 'file_type'],
+    labels: { gift_state: 'Situação' },
+    formatters: {
+      value: (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value),
+      gift_state: (_value, item) => {
+        if (item.gifted_at && !item.manual_availability_override) return 'Presenteado'
+        if (!item.available) return 'Indisponível pelo administrador'
+        if (item.reservation_expires_at && new Date(item.reservation_expires_at).getTime() > Date.now()) {
+          return item.reservation_in_process ? 'Aguardando verificação' : 'Reservado temporariamente'
+        }
+        return item.manual_availability_override ? 'Disponível (liberado manualmente)' : 'Disponível'
+      },
+    },
   },
   mensagens: {
     title: 'Mensagens recebidas',
@@ -55,8 +66,7 @@ const resources = {
     readOnly: true,
     preventCreate: true,
     preventDelete: true,
-    hideActions: true,
-    columns: ['guest_name', 'message', 'gift_name', 'amount', 'created_at', 'payment_status'],
+    columns: ['guest_name', 'message', 'gift_name', 'amount', 'payment_method', 'created_at', 'payment_status', 'reviewed_at'],
     labels: {
       guest_name: 'Nome do convidado',
       message: 'Mensagem',
@@ -64,15 +74,18 @@ const resources = {
       amount: 'Valor',
       created_at: 'Data e horário da contribuição',
       payment_status: 'Status do pagamento',
+      payment_method: 'Modalidade',
+      reviewed_at: 'Revisado em',
     },
     formatters: {
       amount: (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value),
       payment_status: (value, item) => {
-        if (value === 'pending'
+        if (['pending', 'in_process'].includes(value)
           && item?.reservation_expires_at
           && new Date(item.reservation_expires_at).getTime() <= Date.now()) {
           return 'Expirado'
         }
+        if (item?.payment_method === 'pix' && value === 'in_process') return 'Aguardando confirmação administrativa'
         return ({
         pending: 'Pendente',
         in_process: 'Pendente',
@@ -90,6 +103,43 @@ const resources = {
         const contributionDate = item?.paid_at || value
         return contributionDate ? new Date(contributionDate).toLocaleString('pt-BR') : '—'
       },
+      reviewed_at: (value) => value ? new Date(value).toLocaleString('pt-BR') : '—',
+      payment_method: (value) => value === 'pix' ? 'PIX' : value === 'card' ? 'Cartão' : value,
+    },
+  },
+  historico_presentes: {
+    title: 'Histórico de presentes',
+    table: 'gift_payment_events',
+    select: '*, gifts(name), gift_payments(guest_name, gift_name)',
+    readOnly: true,
+    preventCreate: true,
+    preventDelete: true,
+    hideActions: true,
+    columns: ['event_type', 'gift_name', 'guest_name', 'previous_status', 'next_status', 'actor_id', 'created_at', 'details'],
+    labels: {
+      event_type: 'Ação',
+      gift_name: 'Presente',
+      guest_name: 'Nome informado',
+      previous_status: 'Status anterior',
+      next_status: 'Novo status',
+      actor_id: 'Administrador',
+      created_at: 'Data e horário',
+      details: 'Detalhes',
+    },
+    formatters: {
+      event_type: (value) => ({
+        payment_started: 'Pagamento iniciado',
+        reservation_expired: 'Reserva expirada',
+        pix_confirmation_requested: 'PIX informado pelo convidado',
+        pix_payment_confirmed: 'PIX confirmado pelo administrador',
+        pix_payment_rejected: 'Solicitação PIX rejeitada',
+        card_payment_status_updated: 'Status atualizado pelo Mercado Pago',
+        gift_made_available: 'Presente liberado',
+        gift_made_unavailable: 'Presente bloqueado',
+      })[value] || value,
+      gift_name: (_value, item) => item.gifts?.name || item.gift_payments?.gift_name || '—',
+      guest_name: (_value, item) => item.gift_payments?.guest_name || '—',
+      created_at: (value) => value ? new Date(value).toLocaleString('pt-BR') : '—',
     },
   },
   fotos: {
@@ -111,7 +161,7 @@ const resources = {
     preventCreate: true,
     preventDelete: true,
     fields: [
-      { name: 'key', label: 'Informação', type: 'select', options: [['couple', 'Nomes do casal'], ['date', 'Data e horário (ISO)'], ['dateLabel', 'Data exibida'], ['timeLabel', 'Horário exibido'], ['venue', 'Local do casamento'], ['city', 'Cidade']], required: true },
+      { name: 'key', label: 'Informação', type: 'select', options: [['couple', 'Nomes do casal'], ['date', 'Data e horário (ISO)'], ['dateLabel', 'Data exibida'], ['timeLabel', 'Horário exibido'], ['venue', 'Local do casamento'], ['city', 'Cidade'], ['pix_key', 'Chave PIX'], ['pix_recipient_name', 'Destinatário PIX']], required: true },
       { name: 'value', label: 'Conteúdo', required: true },
       { name: 'is_public', label: 'Disponível no site público', type: 'checkbox' },
     ],
@@ -141,6 +191,21 @@ function displayValue(value) {
   return String(value)
 }
 
+function hasActiveGiftReservation(item) {
+  return Boolean(item.reservation_expires_at
+    && new Date(item.reservation_expires_at).getTime() > Date.now())
+}
+
+function isGiftCurrentlyAvailable(item) {
+  return item.available && !item.gifted_at && !hasActiveGiftReservation(item)
+}
+
+function isPixReviewable(payment) {
+  return payment.payment_method === 'pix'
+    && payment.payment_status === 'in_process'
+    && hasActiveGiftReservation({ reservation_expires_at: payment.reservation_expires_at })
+}
+
 function AdminDataPage() {
   const { resource = '' } = useParams()
   const config = resources[resource]
@@ -163,7 +228,7 @@ function AdminDataPage() {
     try {
       const { data, error: queryError } = await requireSupabase()
         .from(config.table)
-        .select('*')
+        .select(config.select || '*')
         .order(config.key || 'created_at', { ascending: false })
 
       if (queryError) setError(queryError.message)
@@ -256,6 +321,10 @@ function AdminDataPage() {
         payload.file_type = null
         payload.image_url = null
       }
+      if (resource === 'informacoes') {
+        payload.value = JSON.stringify(payload.value ?? '')
+        if (['pix_key', 'pix_recipient_name'].includes(payload.key)) payload.is_public = false
+      }
       if (uploaded && resource === 'presentes') {
         payload.file_url = uploaded.url
         payload.file_type = uploaded.type
@@ -318,6 +387,52 @@ function AdminDataPage() {
     }
   }
 
+  async function updateGiftAvailability(item) {
+    const nextAvailable = !isGiftCurrentlyAvailable(item)
+    if (nextAvailable && !window.confirm(
+      'Tornar este presente disponível novamente? O histórico dos pagamentos anteriores será preservado.'
+    )) return
+
+    setError('')
+    setNotice('')
+    try {
+      const { error: actionError } = await requireSupabase().rpc('admin_set_gift_availability', {
+        p_gift_id: item.id,
+        p_available: nextAvailable,
+      })
+      if (actionError) throw actionError
+      setNotice(nextAvailable ? 'Presente liberado e disponível novamente.' : 'Presente marcado como indisponível.')
+      await loadItems()
+    } catch (actionError) {
+      setError(actionError.code === 'P0001'
+        ? 'Não é possível alterar a disponibilidade enquanto houver uma reserva ativa ou pagamento em verificação.'
+        : actionError.message || 'Não foi possível alterar a disponibilidade do presente.')
+    }
+  }
+
+  async function reviewPixPayment(item, approve) {
+    const prompt = approve
+      ? 'Confirme somente se verificou o recebimento do PIX.'
+      : 'Deseja rejeitar esta solicitação de pagamento PIX?'
+    if (!window.confirm(prompt)) return
+
+    setError('')
+    setNotice('')
+    try {
+      const { error: actionError } = await requireSupabase().rpc('admin_review_pix_payment', {
+        p_idempotency_key: item.idempotency_key,
+        p_approve: approve,
+      })
+      if (actionError) throw actionError
+      setNotice(approve ? 'Pagamento PIX confirmado.' : 'Solicitação PIX rejeitada.')
+      await loadItems()
+    } catch (actionError) {
+      setError(actionError.code === 'P0001'
+        ? 'A reserva deste presente expirou ou foi alterada. Atualize a página antes de revisar o pagamento.'
+        : actionError.message || 'Não foi possível revisar este pagamento.')
+    }
+  }
+
   if (!config) return <p className="admin-alert">Esta seção administrativa não foi encontrada.</p>
   if (resource === 'configuracoes') return <HomeHeroSettings />
 
@@ -336,8 +451,8 @@ function AdminDataPage() {
           {field.type === 'textarea'
             ? <textarea name={field.name} value={draft[field.name] ?? ''} onChange={updateField} required={field.required} rows="4" />
             : field.type === 'select'
-              ? <select name={field.name} value={draft[field.name] ?? ''} onChange={updateField} required={field.required}>{field.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
-              : <input name={field.name} type={field.type || 'text'} value={field.type === 'file' ? undefined : draft[field.name] ?? ''} checked={field.type === 'checkbox' ? Boolean(draft[field.name]) : undefined} onChange={updateField} required={field.required && field.type !== 'file'} accept={field.accept} min={field.type === 'number' ? 0 : undefined} step={field.step} />}
+              ? <select name={field.name} value={draft[field.name] ?? ''} onChange={updateField} required={field.required} disabled={resource === 'informacoes' && field.name === 'key' && Boolean(editor.id)}>{field.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+              : <input name={field.name} type={field.type || 'text'} value={field.type === 'file' ? undefined : draft[field.name] ?? ''} checked={field.type === 'checkbox' ? Boolean(draft[field.name]) : undefined} onChange={updateField} required={field.required && field.type !== 'file' && !(resource === 'informacoes' && draft.key === 'pix_key')} disabled={(resource === 'informacoes' && field.name === 'is_public' && ['pix_key', 'pix_recipient_name'].includes(draft.key)) || (resource === 'informacoes' && field.name === 'key' && Boolean(editor.id))} accept={field.accept} min={field.type === 'number' ? 0 : undefined} step={field.step} />}
         </label>)}
       </div>
       {selectedFile && <p className="admin-file-preview">{selectedFile.type.startsWith('image/') ? <img src={selectedFilePreview} alt="Pré-visualização do arquivo" /> : selectedFile.name}</p>}
@@ -352,8 +467,20 @@ function AdminDataPage() {
       : <div className="admin-table-wrap"><table className="admin-table">
         <thead><tr>{config.columns.map((column) => <th key={column}>{config.labels?.[column] || column.replaceAll('_', ' ')}</th>)}{!config.hideActions && <th>Ações</th>}</tr></thead>
         <tbody>{items.map((item) => <tr key={item.id || item.key}>
-          {config.columns.map((column) => <td key={column}>{config.formatters?.[column] && item[column] ? config.formatters[column](item[column], item) : displayValue(item[column])}</td>)}
-          {!config.hideActions && <td className="admin-row-actions">{!config.readOnly && <button type="button" onClick={() => startEdit(item)}>Editar</button>}{!config.preventDelete && <button type="button" onClick={() => deleteItem(item)}>Excluir</button>}</td>}
+          {config.columns.map((column) => <td key={column}>{config.formatters?.[column] ? config.formatters[column](item[column], item) : displayValue(item[column])}</td>)}
+          {!config.hideActions && <td className="admin-row-actions">
+            {!config.readOnly && <button type="button" onClick={() => startEdit(item)}>Editar</button>}
+            {!config.preventDelete && <button type="button" onClick={() => deleteItem(item)}>Excluir</button>}
+            {resource === 'presentes' && (hasActiveGiftReservation(item)
+              ? <button type="button" disabled>Reserva em andamento</button>
+              : <button type="button" onClick={() => updateGiftAvailability(item)}>
+                {isGiftCurrentlyAvailable(item) ? 'Tornar indisponível' : 'Tornar disponível novamente'}
+              </button>)}
+            {resource === 'pagamentos' && isPixReviewable(item) && <>
+              <button type="button" onClick={() => reviewPixPayment(item, true)}>Confirmar PIX recebido</button>
+              <button type="button" onClick={() => reviewPixPayment(item, false)}>Rejeitar solicitação</button>
+            </>}
+          </td>}
         </tr>)}</tbody>
       </table></div>}
   </section>

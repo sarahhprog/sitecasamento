@@ -1221,6 +1221,43 @@ p {
   min-height: 44px;
 }
 
+.button-pix {
+  color: var(--forest);
+  border-color: rgba(103,107,82,.65);
+}
+
+.button-pix:hover {
+  color: var(--cream);
+  border-color: var(--forest);
+  background: var(--forest);
+}
+
+.gift-pix-details {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.gift-pix-details p {
+  color: rgba(41,40,36,.84);
+  font-size: .96rem;
+  line-height: 1.7;
+}
+
+.gift-pix-details h3 {
+  margin: 10px 0;
+  color: var(--forest);
+  font: 500 1.6rem var(--serif);
+}
+
+.gift-pix-summary {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.gift-pix-summary strong { color: var(--forest); }
+
 .payment-result {
   display: grid;
   justify-items: start;
@@ -2003,6 +2040,7 @@ p {
   .gift-checkout-dialog h2 { font-size: 1.7rem; }
   .gift-checkout-actions { flex-direction: column-reverse; }
   .gift-checkout-actions .button { width: 100%; }
+  .gift-pix-details > .button { width: 100%; }
   .location-section { margin-top: 36px; }
   .location-card { align-items: flex-start; flex-direction: column; gap: 22px; padding: 24px 18px; }
   .location-card h2 { font-size: 2rem; }

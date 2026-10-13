@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import PageLayout from './PageLayout'
 import { isSupabaseConfigured, requireSupabase } from '../lib/supabase'
+import { copyPixKeyToClipboard } from '../lib/pix'
 
 const PAGE_SIZE = 12
 
@@ -74,6 +75,10 @@ function Presentes() {
   const [checkoutAttemptId, setCheckoutAttemptId] = useState('')
   const [checkoutError, setCheckoutError] = useState('')
   const [checkoutBusy, setCheckoutBusy] = useState(false)
+  const [checkoutStep, setCheckoutStep] = useState('details')
+  const [pixSettings, setPixSettings] = useState(null)
+  const [pixPayment, setPixPayment] = useState(null)
+  const [pixCopied, setPixCopied] = useState(false)
   const checkoutBusyRef = useRef(false)
   const guestNameInput = useRef(null)
   const checkoutDialog = useRef(null)
@@ -118,10 +123,11 @@ function Presentes() {
         setRemoteGifts((data || []).map((gift) => {
           const reservationActive = gift.reservation_expires_at
             && new Date(gift.reservation_expires_at).getTime() > now
-          const reservationInProcess = gift.reservation_in_process
           return {
             ...gift,
-            available: gift.available && !gift.gifted_at && !reservationActive && !reservationInProcess,
+            available: gift.available
+              && !gift.gifted_at
+              && !reservationActive,
           }
         }))
         setGiftCount(count || 0)
@@ -182,6 +188,10 @@ function Presentes() {
     setGuestName('')
     setMessage('')
     setCheckoutError('')
+    setCheckoutStep('details')
+    setPixSettings(null)
+    setPixPayment(null)
+    setPixCopied(false)
     setCheckoutAttemptId(crypto.randomUUID())
   }
 
@@ -189,6 +199,7 @@ function Presentes() {
     if (checkoutBusyRef.current) return
     setSelectedGift(null)
     setCheckoutError('')
+    setCheckoutStep('details')
   }
 
   useEffect(() => {
@@ -271,25 +282,30 @@ function Presentes() {
     }
   }, [selectedGift])
 
-  async function handleCheckoutSubmit(event) {
-    event.preventDefault()
-    if (!selectedGift || checkoutBusy) return
-
+  function validateGuestDetails() {
     const trimmedName = guestName.trim()
     const trimmedMessage = message.trim()
     if (!trimmedName) {
       setCheckoutError('Informe seu nome para continuar.')
       guestNameInput.current?.focus()
-      return
+      return null
     }
     if (trimmedName.length > 120) {
       setCheckoutError('O nome deve ter no máximo 120 caracteres.')
-      return
+      return null
     }
     if (trimmedMessage.length > 300) {
       setCheckoutError('A mensagem deve ter no máximo 300 caracteres.')
-      return
+      return null
     }
+    return { trimmedName, trimmedMessage }
+  }
+
+  async function handleCardCheckout(event) {
+    event.preventDefault()
+    if (!selectedGift || checkoutBusy) return
+    const guest = validateGuestDetails()
+    if (!guest) return
 
     setCheckoutBusy(true)
     checkoutBusyRef.current = true
@@ -301,8 +317,8 @@ function Presentes() {
         body: JSON.stringify({
           giftId: selectedGift.id,
           idempotencyKey: checkoutAttemptId,
-          guestName: trimmedName,
-          message: trimmedMessage,
+          guestName: guest.trimmedName,
+          message: guest.trimmedMessage,
         }),
       })
       const contentType = response.headers.get('content-type') || ''
@@ -335,6 +351,79 @@ function Presentes() {
       window.location.assign(data.init_point)
     } catch (checkoutFailure) {
       setCheckoutError(checkoutFailure.message || 'Não foi possível conectar ao servidor.')
+    } finally {
+      checkoutBusyRef.current = false
+      setCheckoutBusy(false)
+    }
+  }
+
+  async function handlePixStart() {
+    if (!selectedGift || checkoutBusy) return
+    const guest = validateGuestDetails()
+    if (!guest) return
+
+    setCheckoutBusy(true)
+    checkoutBusyRef.current = true
+    setCheckoutError('')
+    try {
+      const reserveResponse = await fetch('/api/presentes/pix/reservar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          giftId: selectedGift.id,
+          idempotencyKey: checkoutAttemptId,
+          guestName: guest.trimmedName,
+          message: guest.trimmedMessage,
+        }),
+      })
+      const reservation = await reserveResponse.json()
+      if (!reserveResponse.ok || !reservation.purchase_id) {
+        if (reservation.code === 'GIFT_UNAVAILABLE') refreshGifts.current?.()
+        throw new Error(reservation.error || 'Não foi possível reservar este presente para o PIX.')
+      }
+
+      setPixSettings({
+        pixKey: reservation.pix_key,
+        recipientName: reservation.recipient_name,
+      })
+      setPixPayment(reservation)
+      setCheckoutStep('pix')
+    } catch (pixError) {
+      setCheckoutError(pixError.message || 'Não foi possível iniciar o pagamento via PIX.')
+    } finally {
+      checkoutBusyRef.current = false
+      setCheckoutBusy(false)
+    }
+  }
+
+  async function handleCopyPixKey() {
+    if (!pixSettings?.pixKey) return
+    try {
+      await copyPixKeyToClipboard(pixSettings.pixKey)
+      setPixCopied(true)
+      setCheckoutError('')
+    } catch {
+      setCheckoutError('Não foi possível copiar automaticamente. Selecione e copie a chave PIX.')
+    }
+  }
+
+  async function handlePixConfirmationRequest() {
+    if (!pixPayment?.purchase_id || checkoutBusy) return
+    setCheckoutBusy(true)
+    checkoutBusyRef.current = true
+    setCheckoutError('')
+    try {
+      const response = await fetch('/api/presentes/pix/solicitar-confirmacao', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idempotencyKey: pixPayment.purchase_id }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.message || result.error || 'Não foi possível registrar seu aviso.')
+      setCheckoutStep('pix-confirmed')
+      refreshGifts.current?.()
+    } catch (requestError) {
+      setCheckoutError(requestError.message || 'Não foi possível registrar seu aviso.')
     } finally {
       checkoutBusyRef.current = false
       setCheckoutBusy(false)
@@ -459,7 +548,7 @@ function Presentes() {
             <h2 id="gift-checkout-title">{selectedGift.name}</h2>
             <p className="gift-checkout-value">{formatValue(selectedGift.value)}</p>
 
-            <form onSubmit={handleCheckoutSubmit}>
+            {checkoutStep === 'details' && <form onSubmit={handleCardCheckout}>
               <label className="gift-checkout-field">
                 Seu nome
                 <input
@@ -501,10 +590,44 @@ function Presentes() {
                   Voltar
                 </button>
                 <button className="button" type="submit" disabled={checkoutBusy}>
-                  {checkoutBusy ? 'Preparando pagamento…' : 'Seguir para pagamento'}
+                  {checkoutBusy ? 'Preparando pagamento…' : 'Presentear via cartão'}
+                </button>
+                <button className="button button-pix" type="button" onClick={handlePixStart} disabled={checkoutBusy}>
+                  {checkoutBusy ? 'Preparando PIX…' : 'Presentear via PIX'}
                 </button>
               </div>
-            </form>
+            </form>}
+
+            {checkoutStep === 'pix' && pixSettings && pixPayment && <section className="gift-pix-details">
+              <span className="eyebrow">Pagamento manual via PIX</span>
+              <p>Transfira pelo aplicativo do seu banco para:</p>
+              <p><strong>Destinatário:</strong> {pixSettings.recipientName}</p>
+              <label className="gift-checkout-field">
+                Chave PIX
+                <input type="text" readOnly value={pixSettings.pixKey} onFocus={(event) => event.currentTarget.select()} />
+              </label>
+              <button className="button button-muted" type="button" onClick={handleCopyPixKey}>
+                {pixCopied ? 'Chave copiada' : 'Copiar chave PIX'}
+              </button>
+              <p className="gift-pix-summary">
+                <strong>{pixPayment.gift_name}</strong> · {formatValue(pixPayment.amount)}
+              </p>
+              <p>Após realizar a transferência no aplicativo do banco, avise-nos por aqui. O presente só será confirmado depois que o pagamento for verificado pelos noivos.</p>
+              {checkoutError && <p className="admin-alert" role="alert">{checkoutError}</p>}
+              <div className="gift-checkout-actions">
+                <button className="button button-muted" type="button" onClick={closeCheckout} disabled={checkoutBusy}>Fechar</button>
+                <button className="button" type="button" onClick={handlePixConfirmationRequest} disabled={checkoutBusy}>
+                  {checkoutBusy ? 'Registrando…' : 'Já fiz o pagamento'}
+                </button>
+              </div>
+            </section>}
+
+            {checkoutStep === 'pix-confirmed' && <section className="gift-pix-details">
+              <span className="eyebrow">Aguardando verificação</span>
+              <h3>Recebemos seu aviso!</h3>
+              <p>Vamos verificar o pagamento antes de confirmar o presente. Agradecemos por celebrar esse momento tão especial com a gente. 💚</p>
+              <button className="button" type="button" onClick={closeCheckout}>Fechar</button>
+            </section>}
           </section>
         </div>,
         document.body
