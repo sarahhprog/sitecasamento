@@ -69,7 +69,17 @@ select payment.id, gift.id, 'reservation_disabled',
 from public.gifts as gift
 join public.gift_payments as payment
   on payment.idempotency_key = gift.reservation_payment_key
-where gift.reservation_payment_key is not null;
+where gift.reservation_payment_key is not null
+  and not exists (
+    select 1
+    from public.gift_payment_events as event
+    where event.payment_id = payment.id
+      and event.gift_id = gift.id
+      and event.event_type = 'reservation_disabled'
+      and event.details = jsonb_build_object(
+        'previous_expires_at', payment.reservation_expires_at
+      )
+  );
 
 insert into public.gift_payment_events (
   payment_id, gift_id, event_type, previous_status, next_status, details
@@ -83,6 +93,16 @@ where payment.reservation_expires_at is not null
     select 1
     from public.gifts as gift
     where gift.reservation_payment_key = payment.idempotency_key
+  )
+  and not exists (
+    select 1
+    from public.gift_payment_events as event
+    where event.payment_id = payment.id
+      and event.gift_id = payment.gift_id
+      and event.event_type = 'reservation_disabled'
+      and event.details = jsonb_build_object(
+        'previous_expires_at', payment.reservation_expires_at
+      )
   );
 
 update public.gifts
@@ -96,10 +116,8 @@ where reservation_payment_key is not null
 
 update public.gift_payments
 set reservation_expires_at = null,
-    reservation_in_process = false,
     updated_at = now()
-where reservation_expires_at is not null
-   or reservation_in_process;
+where reservation_expires_at is not null;
 
 grant select (
   manual_availability_override, manual_availability_updated_at,

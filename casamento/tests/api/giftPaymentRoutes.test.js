@@ -661,6 +661,28 @@ test('latest migration removes reservation functions and serializes only payment
   assert.match(migration, /revoke all on function public\.apply_gift_payment_status[\s\S]*from public, anon, authenticated/i)
 })
 
+test('reservation cleanup only updates reservation columns on gifts', () => {
+  const migrationPaths = [
+    '../../supabase/migrations/20261014100000_manual_pix_and_gift_controls.sql',
+    '../../supabase/migrations/20261014110000_remove_gift_reservations.sql',
+  ]
+
+  for (const migrationPath of migrationPaths) {
+    const migration = readFileSync(
+      new URL(migrationPath, import.meta.url),
+      'utf8',
+    )
+    const paymentUpdates = [...migration.matchAll(
+      /update public\.gift_payments\b[\s\S]*?;/gi,
+    )]
+
+    assert.ok(paymentUpdates.length, `${migrationPath} should update the payment ledger`)
+    for (const [statement] of paymentUpdates) {
+      assert.doesNotMatch(statement, /reservation_in_process/i)
+    }
+  }
+})
+
 test('present and payment forms keep mobile content scrollable and expose status messages', () => {
   const page = readFileSync(
     new URL('../../src/pages/Presentes.jsx', import.meta.url),

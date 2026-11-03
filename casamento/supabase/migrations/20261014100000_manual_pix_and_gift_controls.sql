@@ -557,7 +557,7 @@ begin
       update public.gift_payments
       set payment_status = 'expired',
           reservation_expires_at = coalesce(reservation_expires_at, now()),
-          reservation_in_process = false, updated_at = now()
+          updated_at = now()
       where id = payment_row.id;
     end if;
   end if;
