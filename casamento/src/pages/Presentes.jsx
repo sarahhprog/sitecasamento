@@ -3,8 +3,7 @@ import { createPortal } from 'react-dom'
 import PageLayout from './PageLayout'
 import { isSupabaseConfigured, requireSupabase } from '../lib/supabase'
 import { copyPixKeyToClipboard } from '../lib/pix'
-
-const PAGE_SIZE = 12
+import { fetchPublicGifts } from '../lib/publicGifts'
 
 function formatValue(value) {
   return new Intl.NumberFormat('pt-BR', {
@@ -69,6 +68,7 @@ function Presentes() {
     isSupabaseConfigured ? '' : 'A lista de presentes não está configurada neste ambiente.'
   )
   const [page, setPage] = useState(1)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [selectedGift, setSelectedGift] = useState(null)
   const [guestName, setGuestName] = useState('')
   const [message, setMessage] = useState('')
@@ -94,62 +94,42 @@ function Presentes() {
 
     let active = true
 
-    async function loadGifts() {
-      const { data, count, error: queryError } = await requireSupabase()
-        .from('gifts')
-        .select(
-          'id,name,description,value,category,image_url,file_url,file_type,available,public_visible,created_at',
-          { count: 'exact' }
-        )
-        .eq('public_visible', true)
-        .order('created_at', { ascending: true })
-        .range(
-          (currentPage - 1) * PAGE_SIZE,
-          currentPage * PAGE_SIZE - 1
-        )
+    let requestId = 0
+    let requestPending = false
 
-      if (!active) return
+    async function loadGifts(showLoading = false) {
+      if (!active || requestPending) return
+      requestPending = true
+      const currentRequestId = ++requestId
+      if (showLoading) setLoading(true)
 
-      if (queryError) {
-        console.error('Erro ao carregar presentes:', {
-          code: queryError.code || 'UNKNOWN',
-          status: queryError.status || null,
+      try {
+        const result = await fetchPublicGifts(requireSupabase(), currentPage)
+        if (!active || currentRequestId !== requestId) return
+
+        setRemoteGifts(result.gifts)
+        setGiftCount(result.count)
+        setError('')
+      } catch (loadError) {
+        if (!active || currentRequestId !== requestId) return
+
+        console.error('Falha ao carregar a lista de presentes:', {
+          name: loadError?.name || 'Error',
+          code: loadError?.code || loadError?.cause?.code || 'UNKNOWN',
+          status: loadError?.status || null,
         })
-        setError('Não foi possível carregar os presentes cadastrados. Tente novamente mais tarde.')
         setRemoteGifts([])
         setGiftCount(0)
-      } else {
-        setRemoteGifts((data || []).map((gift) => {
-          return { ...gift, available: gift.available }
-        }))
-        setGiftCount(count || 0)
-        setError('')
+        setError('Não foi possível carregar os presentes no momento. Tente novamente.')
+      } finally {
+        requestPending = false
+        if (active && currentRequestId === requestId) setLoading(false)
       }
-
-      setLoading(false)
     }
 
-    loadGifts().catch((loadError) => {
-      if (!active) return
+    loadGifts(true)
 
-      console.error('Falha ao carregar a lista de presentes:', {
-        name: loadError?.name || 'Error',
-        code: loadError?.code || loadError?.cause?.code || 'UNKNOWN',
-      })
-      setRemoteGifts([])
-      setGiftCount(0)
-      setError('Não foi possível carregar os presentes cadastrados. Tente novamente mais tarde.')
-      setLoading(false)
-    })
-
-    refreshGifts.current = () => loadGifts().catch((loadError) => {
-      if (!active) return
-      console.error('Falha ao atualizar a lista de presentes:', {
-        name: loadError?.name || 'Error',
-        code: loadError?.code || loadError?.cause?.code || 'UNKNOWN',
-      })
-      setError('Não foi possível atualizar a lista de presentes.')
-    })
+    refreshGifts.current = () => loadGifts()
     const refreshTimer = window.setInterval(refreshGifts.current, 15000)
     const refreshOnFocus = () => refreshGifts.current?.()
     window.addEventListener('focus', refreshOnFocus)
@@ -162,15 +142,22 @@ function Presentes() {
       document.removeEventListener('visibilitychange', refreshOnFocus)
       refreshGifts.current = null
     }
-  }, [currentPage])
+  }, [currentPage, loadAttempt])
 
   const publicGifts = remoteGifts
 
   const visibleGifts = publicGifts
 
   function changePage(nextPage) {
+    if (nextPage === currentPage) return
     setLoading(isSupabaseConfigured)
     setPage(nextPage)
+  }
+
+  function retryLoadingGifts() {
+    setError('')
+    setLoading(true)
+    setLoadAttempt((attempt) => attempt + 1)
   }
 
   function openCheckout(gift, trigger) {
@@ -431,9 +418,14 @@ function Presentes() {
 
       <section className="gifts-section" aria-label="Opções de presentes">
         {error && (
-          <p className="admin-alert" role="alert">
-            {error}
-          </p>
+          <div className="admin-alert" role="alert">
+            <p>{error}</p>
+            {isSupabaseConfigured && (
+              <button className="button button-muted" type="button" onClick={retryLoadingGifts}>
+                Tentar novamente
+              </button>
+            )}
+          </div>
         )}
 
         {loading ? (
