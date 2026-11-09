@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import PageLayout from './PageLayout'
 import { isSupabaseConfigured, requireSupabase } from '../lib/supabase'
 import { copyPixKeyToClipboard } from '../lib/pix'
-import { fetchPublicGifts } from '../lib/publicGifts'
+import { fetchPublicGifts, PAGE_SIZE } from '../lib/publicGifts'
 
 function formatValue(value) {
   return new Intl.NumberFormat('pt-BR', {

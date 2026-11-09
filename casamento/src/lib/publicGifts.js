@@ -1,4 +1,4 @@
-const PAGE_SIZE = 12
+export const PAGE_SIZE = 12
 
 export async function fetchPublicGifts(supabase, page, timeoutMs = 15000) {
   const controller = new AbortController()
